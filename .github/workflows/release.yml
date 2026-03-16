@@ -1,0 +1,59 @@
+name: Package and Release Skills
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Verify Python 3.9 compatibility
+        run: |
+          python3 --version
+          python3 tests/test_python39_compat.py
+
+  release:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+
+      - name: Package skills
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        run: |
+          cd worklog-logging
+          zip -r "../worklog-logging-${VERSION}.skill" . -x '*.DS_Store' '__pycache__/*' '*.pyc'
+          cd ..
+
+          cd self-improve
+          zip -r "../self-improve-${VERSION}.skill" . -x '*.DS_Store' '__pycache__/*' '*.pyc'
+          cd ..
+
+          cd worklog-analysis
+          zip -r "../worklog-analysis-${VERSION}.skill" . -x '*.DS_Store' '__pycache__/*' '*.pyc'
+          cd ..
+
+          ls -lh *.skill
+
+      - name: Create GitHub Release
+        env:
+          VERSION: ${{ steps.version.outputs.VERSION }}
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            worklog-logging-${{ steps.version.outputs.VERSION }}.skill
+            self-improve-${{ steps.version.outputs.VERSION }}.skill
+            worklog-analysis-${{ steps.version.outputs.VERSION }}.skill
+          generate_release_notes: true
