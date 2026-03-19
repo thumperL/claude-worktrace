@@ -1,54 +1,41 @@
-# Claude Skills
+# claude-worktrace
 
-Three skills for Claude Code that work together to capture work, learn preferences, and generate reports.
+Auto-captures your Claude Code sessions — what you did, what decisions you made, and how you corrected Claude — so nothing is lost when context compacts or sessions end.
 
-## Skills
+**Three skills, zero manual effort:**
 
-| Skill | Purpose | Hooks |
-|-------|---------|-------|
-| **worklog-logging** | Auto-captures session work via AI-powered hooks | PreCompact, UserPromptSubmit (/clear), SessionEnd |
-| **self-improve** | Learns from user corrections and steering patterns | None (receives steers from worklog-logging hooks) |
-| **worklog-analysis** | Standups, weekly/monthly summaries, session tracing | None (reads worklog files on demand) |
+- **worklog-logging** — Hooks into compaction, `/clear`, and session end. Sonnet reads your transcript and writes narrative summaries ("Fixed auth race condition" not "edited 3 files")
+- **self-improve** — Detects when you steer Claude ("use Hono not Express", "keep it shorter") and persists those as preferences. Project steers stay scoped; global ones apply everywhere
+- **worklog-analysis** — Generates standups, weekly/monthly summaries from your worklog
 
-## How they connect
-
-```
-PreCompact / SessionEnd / /clear
-  └── pre_compact_hook.py
-        ├── Sonnet analyzes transcript
-        ├── Writes worklog entry → ~/Documents/AI/worklog/
-        └── Detects steers → ~/Documents/AI/self-improve/preferences-log.md (log-only)
-
-worklog-analysis reads worklog files and groups multi-segment sessions
-self-improve manual flow promotes logged steers to ~/.claude/CLAUDE.md
-```
+**How it works:** You work normally. On compaction/clear/exit, a hook reads the transcript, Sonnet analyzes it in one API call, and writes both a worklog entry and any detected preferences. Everything syncs to `~/Documents/AI/` via iCloud and into Claude's native memory so it's active next session.
 
 ## Install
 
-Download `.skill` files from the [latest release](../../releases/latest), then ask Claude:
+1. Download all three `.skill` files from the [latest release](../../releases/latest)
+2. Open Claude Code **in the directory where you downloaded them** and paste:
 
-> Install these skills: worklog-logging.skill, self-improve.skill, worklog-analysis.skill
+```
+I have three .skill files to install: worklog-logging.skill, self-improve.skill, and worklog-analysis.skill.
 
-Each `.skill` file contains an `INSTALL.md` with step-by-step instructions that Claude follows automatically.
+For each one:
+1. Read the INSTALL.md inside the zip to understand the steps
+2. Unzip into ~/.claude/skills/{skill-name}/
+3. Create required directories (~/Documents/AI/worklog, ~/Documents/AI/self-improve)
+4. Make shell scripts executable (chmod +x)
+5. Register hooks in ~/.claude/settings.json (merge, don't overwrite)
+6. Run the verification checks from INSTALL.md
 
-### Quick install (manual)
-
-```bash
-# Prerequisites
-mkdir -p ~/Documents/AI/worklog ~/Documents/AI/self-improve
-
-# Unzip each skill
-mkdir -p ~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}
-unzip worklog-logging-v*.skill -d ~/.claude/skills/worklog-logging/
-unzip self-improve-v*.skill -d ~/.claude/skills/self-improve/
-unzip worklog-analysis-v*.skill -d ~/.claude/skills/worklog-analysis/
-
-# Make scripts executable
-chmod +x ~/.claude/skills/worklog-logging/scripts/session_end_wrapper.sh
-chmod +x ~/.claude/skills/worklog-logging/scripts/pre_clear_hook.sh
+Start with worklog-logging (it has the hooks), then self-improve, then worklog-analysis.
 ```
 
-Then register hooks in `~/.claude/settings.json` — see `worklog-logging/INSTALL.md` for the JSON.
+3. Claude will read each INSTALL.md and do everything. Verify it worked:
+
+```bash
+python3 ~/.claude/skills/worklog-logging/scripts/write_worklog.py --info
+python3 ~/.claude/skills/self-improve/scripts/write_preferences.py --show
+python3 ~/.claude/skills/worklog-analysis/scripts/analyze_worklog.py --info
+```
 
 ## Requirements
 
@@ -60,20 +47,23 @@ Then register hooks in `~/.claude/settings.json` — see `worklog-logging/INSTAL
 
 ```
 ~/Documents/AI/
-├── worklog/                          # Worklog entries (per-day, per-machine)
+├── worklog/                    # Worklog entries (per-day, per-machine)
 │   ├── 2026-03-17-macbook-pro.md
 │   └── ...
 └── self-improve/
-    └── preferences-log.md            # Auto-detected steers (log-only)
+    ├── MEMORY.md               # Global preferences index
+    ├── feedback_*.md           # Individual global preferences
+    ├── preferences-log.md      # Audit trail (all steers with timestamps)
+    └── projects/
+        └── {project-name}/
+            ├── MEMORY.md       # Project preferences index
+            └── feedback_*.md   # Individual project preferences
 ```
 
 ## Releasing
 
-Push a tag to create a release with packaged `.skill` artifacts:
-
 ```bash
-git tag v1.0.0
-git push origin v1.0.0
+git tag -a v0.3.0 -m "description" && git push origin v0.3.0
 ```
 
-The GitHub Action validates Python 3.9 compatibility, packages each skill directory into a `.skill` zip, and attaches them to a GitHub Release.
+GitHub Action validates Python 3.9 compatibility, packages each skill into a `.skill` zip, and attaches them to a release.
