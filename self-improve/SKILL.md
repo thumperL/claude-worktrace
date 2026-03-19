@@ -3,19 +3,31 @@ name: self-improve
 description: >
   Self-improving interaction skill that learns from user corrections and steering patterns.
   TRIGGER THIS SKILL when any of the following occur during a session:
-  (1) The user corrects Claude's approach 3 or more times (e.g., "no, do X instead", "that's not what I meant",
+  (1) The user corrects Claude's approach 2 or more times (e.g., "no, do X instead", "that's not what I meant",
   "actually...", rephrasing the same request, asking to redo work, expressing dissatisfaction).
-  (2) Context usage is high (85%+) and the conversation has been productive — capture what worked before compacting.
+  (2) The conversation has been long and productive, and you sense context may be getting compacted soon —
+  capture what worked before it's lost.
   (3) The user explicitly says "learn this", "remember this preference", "improve how you work with me",
   or similar self-improvement triggers.
-  Also trigger when Claude notices repeated patterns of correction across a conversation, even before hitting
-  the 3-correction threshold, if the pattern is clear. This skill is about making Claude better at working
-  with this specific user over time. Use it liberally — it's better to learn too often than to miss patterns.
+  Also trigger when Claude notices repeated correction patterns, even before hitting
+  the 2-correction threshold, if the pattern is clear. This skill makes Claude better at working
+  with this specific user over time. Use it liberally — better to learn too often than miss patterns.
+  Works in Claude Code CLI, Cowork, and Claude Desktop chat.
 ---
 
 # Self-Improve: Adaptive Interaction Learning
 
 Analyze how the user has been steering you, identify patterns, and — with confirmation — persist those learnings for all future sessions.
+
+## Platform detection
+
+Figure out which environment you're running in before choosing your analysis approach:
+
+- **CLI (Claude Code)**: You have `CLAUDE_SKILL_DIR` set, the Agent tool for subagents, and bash/Python. Hooks may auto-detect steers between sessions. Use the full subagent analysis flow.
+- **Cowork (Claude Desktop with VM)**: You have bash, Python, and the Agent tool. Use the full subagent analysis flow. The working directory is under `/sessions/`.
+- **Desktop chat (Claude Desktop without VM)**: You have Read/Write/Edit tools but no bash, Python, or Agent tool. Analyze the conversation directly and use text-only persistence.
+
+The quickest check: if you have the Agent tool, use the subagent path. If not, analyze directly. If bash works, scripts are available for persistence; otherwise, use text-only.
 
 ## Why this matters
 
@@ -23,7 +35,7 @@ Every correction is signal. Without this skill, the user re-trains Claude every 
 
 ## When to activate
 
-### Trigger 1: Steer count ≥ 3
+### Trigger 1: Steer count >= 2
 
 A "steer" is ANY input where the user shapes HOW you work. The bar is intentionally low:
 
@@ -40,9 +52,9 @@ A "steer" is ANY input where the user shapes HOW you work. The bar is intentiona
 
 Key insight: if the user is telling you HOW to do something (not just WHAT), that's a steer.
 
-### Trigger 2: High context (85%+)
+### Trigger 2: Long productive conversation nearing its end
 
-Before compacting, analyze the full conversation. This is your last chance to extract learnings.
+If the conversation has involved many exchanges, sustained work, and significant tool use, treat it as a learning opportunity. Don't wait for the user to ask — proactively analyze what patterns emerged before the conversation wraps up or context gets compacted. Signs to watch for: the user switching topics, saying thanks, the conversation feeling "done", or you sensing that earlier messages might be getting far from your attention.
 
 ### Trigger 3: Explicit request
 
@@ -50,9 +62,9 @@ Before compacting, analyze the full conversation. This is your last chance to ex
 
 ## The Analysis Process
 
-### Step 1: Delegate to a subagent
+### Step 1: Analyze the conversation
 
-**This is critical.** Do NOT analyze your own conversation directly — you have blind spots about your own mistakes. Instead, spawn a subagent to analyze the transcript with fresh eyes.
+**If you have the Agent tool (CLI or Cowork):** Delegate to a subagent. This gives you fresh eyes on your own blind spots.
 
 Use the Agent tool to spawn an analyzer:
 
@@ -74,11 +86,17 @@ Also check these existing preferences for conflicts:
 Return your analysis as JSON following the format in the analyzer instructions."
 ```
 
-The subagent returns structured JSON with steers found, patterns identified, and any conflicts.
+If `CLAUDE_SKILL_DIR` is not set, you can still spawn a subagent — just include the analysis instructions inline in the prompt instead of pointing to a file.
 
-### Step 2: Review the subagent's findings
+**If you don't have the Agent tool (Desktop chat):** Analyze the conversation directly. You'll have some blind spots about your own mistakes, so compensate by being extra conservative — only flag patterns you're confident about, and present findings with a note that you might have missed some. Focus on:
+- What did the user correct you on? (These are the clearest signals.)
+- Did the user rephrase the same request multiple times? (You likely misunderstood.)
+- Did the user express preferences about style, format, or approach?
+- Are there repeated patterns, not just one-offs?
 
-Read the JSON response. Sanity-check:
+### Step 2: Review the findings
+
+Whether from a subagent or your own analysis, sanity-check:
 - Do the identified patterns make sense?
 - Are there any false positives (one-offs classified as patterns)?
 - Are there conflicts with existing preferences?
@@ -88,7 +106,7 @@ Read the JSON response. Sanity-check:
 Show EXACTLY what was learned, concisely:
 
 ```
-📋 Patterns detected from this session:
+Patterns detected from this session:
 
 1. **[Category]**: [Preference summary]
    Evidence: "[Brief quote]"
@@ -96,7 +114,7 @@ Show EXACTLY what was learned, concisely:
 2. **[Category]**: [Preference summary]
    Evidence: "[Brief quote]"
 
-[If conflicts:] ⚠️ Conflict: Previously you preferred X, but this session suggests Y. Which should I keep?
+[If conflicts:] Conflict: Previously you preferred X, but this session suggests Y. Which should I keep?
 
 Save these to your global preferences?
 ```
@@ -104,6 +122,8 @@ Save these to your global preferences?
 Keep it SHORT. The user wants to see what you learned and confirm quickly.
 
 ### Step 4: On confirmation, persist
+
+**If bash/Python is available (CLI or Cowork):**
 
 Write preferences using the bundled script:
 
@@ -113,45 +133,45 @@ python "${CLAUDE_SKILL_DIR}/scripts/write_preferences.py" \
   --target global
 ```
 
+If `CLAUDE_SKILL_DIR` is not set, try these fallback paths:
+- `~/.claude/skills/self-improve/scripts/write_preferences.py`
+- `~/Documents/AI/self-improve/scripts/write_preferences.py`
+
 The script handles:
 - Writing to `~/.claude/CLAUDE.md` (global, cross-project, active in all sessions)
 - Writing to `~/Documents/AI/self-improve/preferences-log.md` (detailed log with timestamps, synced across devices)
 - Deduplication (won't add preferences that already exist)
 
-If the script isn't available (or bash is unavailable, e.g. in Claude Desktop), write directly using the Write/Edit tool:
+**If only Read/Write/Edit tools are available (Desktop chat):**
 
-1. Read `~/.claude/CLAUDE.md`
-2. Find the `<!-- self-improve:start -->` / `<!-- self-improve:end -->` markers
-3. Append new preferences inside the markers:
-   ```
-   - [Category] Preference text (learned YYYY-MM-DD)
-   ```
-4. If markers don't exist, create the section:
-   ```markdown
-   ## User Preferences (Auto-Learned)
-   <!-- self-improve:start -->
-   - [Category] Preference text (learned YYYY-MM-DD)
-   <!-- self-improve:end -->
-   ```
-5. Also append to `~/Documents/AI/self-improve/preferences-log.md`:
-   ```markdown
-   ## YYYY-MM-DD HH:MM — [Category]
-   - **Preference**: The preference text
-   - **Evidence**: "brief user quote that triggered this"
-   - **Scope**: global|project
-   - **Source**: Desktop session (manual)
-   ---
-   ```
+Write directly to `~/.claude/CLAUDE.md` using the Edit tool. The managed section uses markers so it won't collide with user-edited content:
+
+```markdown
+## User Preferences (Auto-Learned)
+<!-- self-improve:start -->
+<!-- Managed by self-improve skill. Safe to edit manually. -->
+- [preference 1]
+- [preference 2]
+<!-- self-improve:end -->
+```
+
+If the markers already exist, read the file, find the section between `<!-- self-improve:start -->` and `<!-- self-improve:end -->`, and append new preferences inside it (checking for duplicates by reading existing lines first).
+
+If the markers don't exist yet, append the whole block to the end of the file.
+
+Also append a timestamped entry to `~/Documents/AI/self-improve/preferences-log.md` (or `~/.claude/self-improve-preferences.md` as fallback) with the category, preference, context, and evidence for each item.
 
 ### Step 5: Trigger worklog
 
 After saving preferences, also trigger the **worklog-logging** skill to capture what was accomplished. Present both outputs together for a single confirmation.
 
-### Step 6: Suggest compacting
+### Step 6: Suggest compacting (CLI only)
 
-If context is high:
+If you're in Claude Code and context is high:
 
 "Preferences and worklog saved. Context is getting high — should I compact now? Everything is persisted and will carry over."
+
+In Desktop/Cowork, compaction is handled automatically by the platform, so skip this step.
 
 ## Handling conflicts
 
@@ -172,28 +192,14 @@ If a new preference contradicts an existing one:
 - **Detailed log**: `~/Documents/AI/self-improve/preferences-log.md` (synced across devices, includes evidence and timestamps)
 - **Fallback log**: `~/.claude/self-improve-preferences.md`
 
-## Automatic steer capture (hooks)
+## Automatic steer capture via hooks (CLI only)
 
-PreCompact and SessionEnd hooks (from the worklog-logging skill) automatically detect steering patterns from each transcript segment. This happens without user intervention:
-
+In Claude Code CLI, hooks can auto-detect steers from transcripts between sessions. This happens without user intervention:
 - Detected steers are logged to `~/Documents/AI/self-improve/preferences-log.md` for later review
 - The manual flow (conversation-based, user-confirmed) remains the **only** path to CLAUDE.md
 - Steers are logged with `--target log-only` — they are never auto-applied
 
-### Desktop mode
-
-In Claude Desktop, hooks are not available, so automatic steer capture between sessions does not occur. To compensate, this skill should be **more proactive** about detecting steers during the conversation:
-
-- **Lower threshold**: Trigger at 2 steers instead of 3 in Desktop — fewer automatic captures means more manual captures needed
-- **Earlier context trigger**: Analyze for steers at 60%+ context instead of 85%+ — don't wait until it's almost too late
-- **Inline presentation**: Present detected steers during the conversation when noticed, rather than waiting for a dedicated review step
-- **No auto-detected steers**: The "review detected steers" feature only contains entries from CLI sessions that had hooks active. In Desktop-only usage, the preferences log will only contain manually-confirmed entries.
-
-### Reviewing detected steers
-
-Trigger: "review detected steers", "what have you learned", "show auto-detected preferences"
-
-When triggered, read the preferences log, identify entries marked as "Auto-detected via [hook]", and present unconfirmed items for the user to promote to active preferences or dismiss.
+In Desktop/Cowork, hooks are not available. The skill compensates by triggering more proactively during the conversation itself (see the description triggers above).
 
 ## Recovery
 

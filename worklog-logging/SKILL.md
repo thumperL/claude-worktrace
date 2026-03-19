@@ -6,6 +6,11 @@ description: >
   (1) A session is ending or context is about to be compacted — capture what was done before it's lost.
   (2) The self-improve skill fires — piggyback on that trigger to also log work.
   (3) The user says "log this", "worklog", or wants to record what they've been doing.
+  (4) The conversation has been long and productive — many tool calls, multiple tasks completed,
+  or significant back-and-forth — and no worklog has been saved yet. Don't wait to be asked.
+  (5) The user wraps up with signals like "thanks", "that's all", "goodbye", or switches to a
+  completely different topic after sustained work.
+  (6) The user says "/clear" or is about to start fresh.
   This skill ONLY handles logging — for standups, weekly summaries, monthly reviews, or any
   analysis of past work, use the worklog-analysis skill instead.
   Use this skill liberally. It's cheap to log and expensive to forget.
@@ -14,6 +19,16 @@ description: >
 # Worklog Logging
 
 Capture what was accomplished in this session. This skill is intentionally lightweight — it logs and gets out of the way.
+
+## Platform detection
+
+Before following the process below, figure out which environment you're running in. This determines which tools and paths are available:
+
+- **CLI (Claude Code)**: You have `CLAUDE_SKILL_DIR` set, hooks handle auto-logging, `claude -p` is available, and you're typically in a git repo or project directory. If hooks are installed, you may not even need this skill — it fires automatically.
+- **Cowork (Claude Desktop with VM)**: You have bash, Python, the Agent tool, and file system access, but no hooks. Skill scripts work if you run them explicitly. The working directory is under `/sessions/`.
+- **Desktop chat (Claude Desktop without VM)**: You have Read/Write/Edit tools but no bash or Python. Use the text-only persistence method below.
+
+The quickest check: try running a simple bash command. If bash works, you're in CLI or Cowork. If it doesn't, you're in Desktop chat. If `CLAUDE_SKILL_DIR` is set, you're likely in CLI.
 
 ## Storage
 
@@ -37,9 +52,10 @@ Fallback: `~/.claude/worklog/`
 ### HH:MM — [Project/Context] `sess-XXXX`
 
 **Summary:**
-- [What problem was solved and WHY — enough detail for a resume or performance review]
-- [What was researched, what was learned, what conclusions were reached]
-- [Key decisions made and their reasoning]
+- [Specific accomplishment with enough detail for a performance review]
+- [Another accomplishment — include numbers where possible]
+
+**Tech:** [comma-separated technologies]
 
 **Decisions:** [Optional — architectural or design decisions]
 
@@ -50,30 +66,14 @@ Fallback: `~/.claude/worklog/`
 ---
 ```
 
-**Session ID** (`sess-XXXX`): Derived from Claude's `session_id` (first 4 chars of the UUID), ensuring consistency across all entries in a session — PreCompact and SessionEnd hooks produce matching IDs. This distinguishes parallel sessions on the same machine.
-
-## What makes a good entry
-
-Write as if explaining to a colleague or updating a resume months from now.
-
-**GOOD bullets — tell the story:**
-- Fixed NaN in annualized return calculation — JS Math.pow fails with negative base + fractional exponent, added guard for total loss exceeding invested capital
-- Debugged worklog hooks not firing — root cause was Python 3.10 type syntax (dict | None) crashing on macOS system Python 3.9.6
-- Completed security audit of 98-file branch — reviewed branding APIs, file upload handlers, confirmed proper auth/RBAC checks and file validation
-- Researched IPv6 CIDR validation approaches, settled on ipaddr library for subnet handling
-
-**BAD bullets — mechanical noise:**
-- Edited performance.ts
-- Ran 4 shell commands
-- Used TypeScript
-- Modified 3 files
-
-Focus on the WHAT and WHY, never the HOW (tools used, files touched, tech stack). Those details are in git history if anyone needs them.
+**Session ID** (`sess-XXXX`): Generate a short 4-char alphanumeric ID for this session. Reuse the same ID if you've already logged earlier in this conversation. This distinguishes parallel sessions on the same machine.
 
 ## Process
 
+### When bash/Python is available (CLI or Cowork)
+
 1. **Gather context**: `hostname -s` for machine, `date` for time, infer project from cwd/git/conversation
-2. **Draft entry**: Focus on outcomes, decisions, problems solved. Be specific enough for a performance review months later.
+2. **Draft entry**: Focus on outcomes, not process. Be specific enough for a performance review months later.
 3. **Show user**:
    ```
    Worklog entry:
@@ -83,128 +83,56 @@ Focus on the WHAT and WHY, never the HOW (tools used, files touched, tech stack)
 4. **On confirmation, persist**:
    Run the bundled Python script in this skill's `scripts/` directory:
    ```bash
-   python3 "${CLAUDE_SKILL_DIR}/scripts/write_worklog.py" \
+   python "${CLAUDE_SKILL_DIR}/scripts/write_worklog.py" \
      --date "2026-03-08" --time "14:30" --machine "macbook-pro" \
      --session "sess-f3a1" --project "acme-api" \
-     --summary '["Fixed auth token refresh race condition — stale tokens survived logout", "Researched PKCE vs implicit flow, chose PKCE for public client security"]' \
-     --decisions "Chose PKCE over implicit flow" \
+     --summary '["Refactored auth middleware", "Fixed race condition"]' \
+     --tech '["TypeScript", "Express"]' \
+     --decisions "Chose PKCE over implicit" \
      --artifacts "PR #142" --open "Update API docs"
    ```
-   > **Note:** `${CLAUDE_SKILL_DIR}` resolves to this skill's installation directory automatically.
 
-## Auto-capture via AI-powered hooks
+   If `CLAUDE_SKILL_DIR` is not set (e.g., in Cowork), try these fallback paths in order:
+   - `~/.claude/skills/worklog-logging/scripts/write_worklog.py`
+   - Look for `write_worklog.py` in `~/Documents/AI/worklog/scripts/`
 
-This skill uses **command hooks** that spawn a Claude subagent (`claude -p --model sonnet`) to analyze the session transcript and generate meaningful, narrative worklog entries automatically.
+   If the script can't be found, fall through to the text-only method below.
 
-### How it works
+### When only Read/Write/Edit tools are available (Desktop chat)
 
-```
-Session starts
-  │
-  ├── (work happens — full transcript is recorded)
-  │
-  ├── Context compaction triggered
-  │     └── PreCompact hook fires
-  │           → Reads session transcript (JSONL)
-  │           → Spawns claude -p --model sonnet to analyze
-  │           → Sonnet generates narrative summary + detects steers
-  │           → Calls write_worklog.py to persist worklog
-  │           → Calls write_preferences.py to log steers (log-only)
-  │           → Compaction proceeds
-  │
-  ├── (more work after compaction)
-  │
-  ├── User types /clear
-  │     └── UserPromptSubmit hook fires
-  │           → pre_clear_hook.sh checks if prompt is /clear
-  │           → If yes: same pipeline (transcript → Sonnet → persist)
-  │           → /clear executes after hook returns
-  │
-  └── Session ends (/exit, Ctrl+C, Ctrl+D)
-        └── SessionEnd hook fires
-              → Same process: read transcript → AI summary → persist
-```
+1. **Gather context from conversation**: Infer project from what you've been working on, use current date/time from system context, use "desktop" as the machine name.
+2. **Draft entry**: Same quality bar — specific, quantified, outcome-focused.
+3. **Show user** and get confirmation.
+4. **On confirmation, persist using Write/Edit tools**:
+   - Target path: `~/Documents/AI/worklog/YYYY-MM-DD-desktop.md`
+   - If the file exists, use Edit to append the new entry before the last line
+   - If the file doesn't exist, use Write to create it with the header and entry
+   - If `~/Documents/AI/worklog/` is not accessible, try `~/.claude/worklog/`
 
-### Why a subagent, not mechanical analysis
+   The entry format is identical whether written by script or by hand — downstream analysis tools (worklog-analysis) don't care how it got there.
 
-The transcript contains everything — user requests, Claude's reasoning, decisions, corrections, errors. Only an AI can extract the semantic meaning ("debugged X because Y") from raw conversation data. Mechanical tool-activity counting produces useless entries like "edited 3 files, ran 5 commands."
+## What makes a good entry
 
-### Fallback
+- Specific: "Fixed auth token refresh race condition in /api/auth/refresh" not "Fixed a bug"
+- Quantified: "Added 12 integration tests" not "Added tests"
+- Outcome-focused: "Deployed v2.3 to prod" not "Worked on deployment"
+- Brief: 2-4 bullets per session, not a novel
 
-If the `claude` CLI is not available, the hook falls back to smart transcript parsing — extracting user requests as work items. This is better than nothing but less rich than the AI summary.
+## Auto-trigger via hooks (CLI only)
 
-## Automatic steer detection
+This section only applies to Claude Code CLI where hooks are available. In Desktop/Cowork, skip this — the skill triggers from the description above instead.
 
-The hook also detects user steering patterns (steers) from the same transcript in the same Sonnet API call. Detected steers are logged via self-improve's `write_preferences.py --target log-only` to `~/Documents/AI/self-improve/preferences-log.md`.
+This skill uses three hooks working together for reliable auto-logging:
 
-**Important:** Steers are NOT auto-applied to CLAUDE.md. Use the self-improve skill's manual flow to review and confirm detected steers before promoting them to active preferences.
+1. **PostToolUse hook** (`scripts/post_tool_use_logger.py`, async) — fires after every tool call during the session. Captures tool name, files touched, commands run, bash command categories, and technologies to `/tmp/claude-worklog-{session_id}.jsonl`. Runs asynchronously so it never slows down the session.
 
-## Desktop mode (pure skill, no hooks)
+2. **PreCompact hook** (`scripts/pre_compact_hook.py`) — fires before context compaction. Reads the activity log from `/tmp/` (NOT the transcript, which may already be compacted), generates rich summary bullets, and calls `write_worklog.py`. Cleans up the temp file after.
 
-In Claude Desktop, hooks are not available. Instead, this skill operates proactively — Claude offers to capture worklogs at key moments during the conversation.
+3. **SessionEnd hook** (`scripts/pre_compact_hook.py`) — fires when the session ends (Cmd+C, /exit, Ctrl+D). Uses the same script as PreCompact. Captures any work done after the last compaction. If PreCompact already processed the log, SessionEnd finds nothing and exits cleanly.
 
-### When to trigger (Desktop)
+All hooks are registered in `~/.claude/settings.json` under `hooks.PostToolUse`, `hooks.PreCompact`, and `hooks.SessionEnd`.
 
-Be proactive. In Desktop mode there are no automatic hooks, so YOU must initiate worklog capture:
-
-1. **High context (60%+)**: When context usage is getting high, proactively capture a worklog entry summarizing work done so far. Don't wait for 85% — by then it may be too late.
-2. **Task milestone completed**: When a significant task is finished (feature implemented, bug fixed, investigation concluded), offer to log the accomplishment.
-3. **Before /clear**: If the user is about to clear context, capture a worklog entry FIRST.
-4. **Session wind-down**: When the user signals they're wrapping up ("thanks", "that's all", "goodbye", "done for now"), capture remaining work before they leave.
-
-### How to invoke (Desktop)
-
-**Path A — With bash access:**
-
-```bash
-python3 ~/.claude/skills/worklog-logging/scripts/pre_compact_hook.py \
-  --summary '["Fixed auth race condition — stale tokens survived logout", "Researched PKCE vs implicit flow"]' \
-  --cwd "$(pwd)" \
-  --project "acme-api"
-```
-
-Or use the manual wrapper:
-
-```bash
-bash ~/.claude/skills/worklog-logging/scripts/manual_worklog.sh \
-  --project "acme-api" \
-  "Fixed auth race condition" "Researched PKCE vs implicit flow"
-```
-
-**Path B — Without bash (text-only fallback):**
-
-If bash is not available, write the worklog entry directly using the Write/Edit tool. Append to `~/Documents/AI/worklog/YYYY-MM-DD-{hostname}.md` (create the file if it doesn't exist).
-
-Use `hostname -s` equivalent or ask the user for their machine name. Follow this exact format:
-
-```markdown
-# Worklog — YYYY-MM-DD (hostname)
-
-### HH:MM — [Project/Context] `sess-XXXX`
-
-**Summary:**
-- [What problem was solved and WHY — enough detail for a resume or performance review]
-- [Key decisions made and their reasoning]
-
-**Decisions:** [Optional — architectural or design decisions]
-
-**Open:** [Optional — what's still pending]
-
----
-```
-
-The header line (`# Worklog — ...`) should only appear once at the top of the file. Subsequent entries are appended below.
-
-Generate a random 4-character session ID (`sess-XXXX`) for the entry. If you already have a session identifier, use the first 4 characters prefixed with `sess-`.
-
-### Desktop vs CLI comparison
-
-| Aspect | CLI (hooks) | Desktop (pure skill) |
-|--------|-------------|---------------------|
-| Trigger | Automatic (PreCompact, SessionEnd, /clear) | Proactive (Claude offers at key moments) |
-| AI summary | Via `claude -p --model sonnet` subprocess | Via Claude's own analysis inline |
-| Reliability | Deterministic — always fires | Advisory — Claude proactively offers |
-| Output format | Identical | Identical |
+If the hook's auto-generated entry is too sparse, you can always invoke `/worklog-logging` manually for a richer, context-aware entry.
 
 ## Integration with self-improve
 
