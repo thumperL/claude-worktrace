@@ -6,9 +6,11 @@
 
 INPUT=$(cat)
 
-# Fast check: only spawn python if the input contains /clear
+# Match prompt value starting with /clear — avoids false positives from
+# prompts that merely mention "/clear" mid-sentence.
+# Handles both "prompt": "/clear" and "prompt":"/clear" (with/without space)
 case "$INPUT" in
-    *'"prompt"'*'/clear'*)
+    *'"prompt": "/clear'*|*'"prompt":"/clear'*)
         echo "$INPUT" | python3 ~/.claude/skills/worklog-logging/scripts/pre_compact_hook.py
         ;;
 esac

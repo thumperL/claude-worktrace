@@ -424,7 +424,7 @@ def main():
         sys.exit(1)
 
     if args.target == "auto":
-        # Split by scope field — one subprocess call handles both
+        # Split by scope field — one invocation handles both scopes
         global_prefs = [p for p in preferences if p.get("scope", "global") == "global"]
         project_prefs = [p for p in preferences if p.get("scope") == "project"]
         if global_prefs:
