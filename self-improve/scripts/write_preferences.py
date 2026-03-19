@@ -73,7 +73,7 @@ def _get_prefs_log():
 def _encode_claude_project_path(cwd):
     """Encode a cwd into Claude Code's project directory name.
 
-    /Users/thumperl/projects/foo → -Users-thumperl-projects-foo
+    /Users/jane/projects/foo → -Users-jane-projects-foo
     """
     if not cwd:
         return None
