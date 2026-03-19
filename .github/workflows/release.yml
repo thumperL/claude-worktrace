@@ -30,30 +30,17 @@ jobs:
         run: echo "VERSION=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
 
       - name: Package skills
-        env:
-          VERSION: ${{ steps.version.outputs.VERSION }}
         run: |
-          cd worklog-logging
-          zip -r "../worklog-logging-${VERSION}.skill" . -x '*.DS_Store' '__pycache__/*' '*.pyc'
-          cd ..
-
-          cd self-improve
-          zip -r "../self-improve-${VERSION}.skill" . -x '*.DS_Store' '__pycache__/*' '*.pyc'
-          cd ..
-
-          cd worklog-analysis
-          zip -r "../worklog-analysis-${VERSION}.skill" . -x '*.DS_Store' '__pycache__/*' '*.pyc'
-          cd ..
-
+          cd worklog-logging && zip -r ../worklog-logging.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
+          cd self-improve && zip -r ../self-improve.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
+          cd worklog-analysis && zip -r ../worklog-analysis.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
           ls -lh *.skill
 
       - name: Create GitHub Release
-        env:
-          VERSION: ${{ steps.version.outputs.VERSION }}
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            worklog-logging-${{ steps.version.outputs.VERSION }}.skill
-            self-improve-${{ steps.version.outputs.VERSION }}.skill
-            worklog-analysis-${{ steps.version.outputs.VERSION }}.skill
+            worklog-logging.skill
+            self-improve.skill
+            worklog-analysis.skill
           generate_release_notes: true
