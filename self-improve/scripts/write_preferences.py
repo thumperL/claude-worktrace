@@ -1,12 +1,26 @@
 #!/usr/bin/env python3
 """
-write_preferences.py — Persist learned preferences to ~/.claude/CLAUDE.md
-and ~/Documents/AI/self-improve/preferences-log.md
+write_preferences.py — Persist learned preferences with dual-write architecture.
+
+Writes to BOTH Claude Code native paths (immediately active) and a standalone
+portable store (iCloud-synced, tool-agnostic). All writes also go to the
+audit trail (preferences-log.md).
+
+Targets:
+    global  — ~/.claude/CLAUDE.md + ~/Documents/AI/self-improve/GLOBAL_PREFERENCE.md + log
+    project — ~/.claude/projects/{path}/memory/ + ~/Documents/AI/self-improve/projects/{name}/ + log
+    log-only — preferences-log.md only (legacy, backward compat)
 
 Usage:
+    # Global preference (applied everywhere)
     python write_preferences.py \
-        --preferences '[{"category": "Code Style", "preference": "Use 2-space indent", "context": "All JS/TS files", "evidence": "User said: use 2 spaces"}]' \
+        --preferences '[{"category": "Style", "preference": "Keep responses concise"}]' \
         --target global
+
+    # Project preference (scoped to one project)
+    python write_preferences.py \
+        --preferences '[{"category": "Stack", "preference": "Use Hono not Express"}]' \
+        --target project --project-name ipmates-v2 --project-cwd /Users/me/projects/ipmates-v2
 
     python write_preferences.py --show    # Display current preferences
     python write_preferences.py --remove "Use 2-space indent"  # Remove a preference
@@ -15,46 +29,69 @@ Usage:
 import argparse
 import json
 import os
+import re
 import sys
 from datetime import datetime
 from pathlib import Path
 
 
+# --- Paths ---
+
 CLAUDE_DIR = Path.home() / ".claude"
 CLAUDE_MD = CLAUDE_DIR / "CLAUDE.md"
 
-# iCloud primary, local fallback
-ICLOUD_PREFS = Path.home() / "Documents" / "AI" / "self-improve"
-LOCAL_PREFS = CLAUDE_DIR
+# Standalone store (iCloud-synced, portable)
+STANDALONE_DIR = Path.home() / "Documents" / "AI" / "self-improve"
+LOCAL_FALLBACK = CLAUDE_DIR
+
+# Claude Code native memory base
+CLAUDE_PROJECTS_DIR = CLAUDE_DIR / "projects"
 
 
-def _get_prefs_log() -> Path:
-    """Resolve preferences log path with validation and user-friendly error reporting."""
-    # Primary: iCloud path (already created by user)
-    if ICLOUD_PREFS.exists():
-        return ICLOUD_PREFS / "preferences-log.md"
+# --- Path resolution ---
 
-    # Check if parent (AI/) exists — try to create self-improve/ inside it
-    icloud_parent = ICLOUD_PREFS.parent  # .../AI/
+def _get_standalone_dir():
+    """Resolve standalone preferences directory, creating if parent exists."""
+    if STANDALONE_DIR.exists():
+        return STANDALONE_DIR
+    icloud_parent = STANDALONE_DIR.parent  # ~/Documents/AI/
     if icloud_parent.exists():
         try:
-            ICLOUD_PREFS.mkdir(parents=False, exist_ok=True)
-            return ICLOUD_PREFS / "preferences-log.md"
-        except OSError as e:
-            print(f"⚠️  Could not create preferences directory at {ICLOUD_PREFS}: {e}", file=sys.stderr)
-            print(f"   Falling back to {LOCAL_PREFS / 'self-improve-preferences.md'}", file=sys.stderr)
+            STANDALONE_DIR.mkdir(parents=False, exist_ok=True)
+            return STANDALONE_DIR
+        except OSError:
+            pass
+    return LOCAL_FALLBACK
 
-    # Check if ~/Documents/AI exists but self-improve/ subfolder is missing
-    docs_ai = Path.home() / "Documents" / "AI"
-    if docs_ai.exists() and not icloud_parent.exists():
-        print(f"⚠️  ~/Documents/AI found but self-improve directory is missing.", file=sys.stderr)
-        print(f"   Expected: {ICLOUD_PREFS}", file=sys.stderr)
-        print(f"   Please create it: mkdir -p ~/Documents/AI/self-improve", file=sys.stderr)
-        print(f"   Falling back to {LOCAL_PREFS / 'self-improve-preferences.md'}", file=sys.stderr)
 
-    # Fallback: local path
-    return LOCAL_PREFS / "self-improve-preferences.md"
+def _get_prefs_log():
+    """Resolve preferences log path."""
+    base = _get_standalone_dir()
+    return base / "preferences-log.md"
 
+
+def _encode_claude_project_path(cwd):
+    """Encode a cwd into Claude Code's project directory name.
+
+    /Users/thumperl/projects/foo → -Users-thumperl-projects-foo
+    """
+    if not cwd:
+        return None
+    # Normalize: remove trailing slash, replace / with -
+    clean = cwd.rstrip("/")
+    encoded = clean.replace("/", "-")
+    return encoded
+
+
+def _sanitize_filename(text):
+    """Create a safe filename from preference text."""
+    # Take first 50 chars, lowercase, replace non-alnum with underscore
+    clean = re.sub(r'[^a-z0-9]+', '_', text.lower().strip()[:50])
+    clean = clean.strip('_')
+    return clean or "preference"
+
+
+# --- Constants ---
 
 PREFS_LOG = _get_prefs_log()
 
@@ -63,11 +100,13 @@ SECTION_MARKER_START = "<!-- self-improve:start -->"
 SECTION_MARKER_END = "<!-- self-improve:end -->"
 
 
+# --- Utility ---
+
 def ensure_claude_dir():
     CLAUDE_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def read_file(path: Path) -> str:
+def read_file(path):
     if path.exists():
         return path.read_text(encoding="utf-8")
     return ""
@@ -94,13 +133,10 @@ def is_duplicate(new_pref, existing):
     new_lower = new_pref.lower().strip()
     for existing_pref in existing:
         existing_lower = existing_pref.lower().strip()
-        # Exact match
         if new_lower == existing_lower:
             return True
-        # Substring match (one contains the other)
         if new_lower in existing_lower or existing_lower in new_lower:
             return True
-        # High word overlap
         new_words = set(new_lower.split())
         existing_words = set(existing_lower.split())
         if len(new_words) > 2 and len(existing_words) > 2:
@@ -109,6 +145,8 @@ def is_duplicate(new_pref, existing):
                 return True
     return False
 
+
+# --- Writers: Claude Code native ---
 
 def write_to_claude_md(preferences):
     """Append or update the auto-learned section in CLAUDE.md."""
@@ -120,17 +158,16 @@ def write_to_claude_md(preferences):
     for pref in preferences:
         pref_text = pref["preference"]
         if pref.get("context"):
-            pref_text += f" (when: {pref['context']})"
+            pref_text += " (when: %s)" % pref["context"]
         if is_duplicate(pref_text, existing_prefs):
             skipped.append(pref_text)
         else:
             new_prefs.append(pref_text)
 
     if not new_prefs:
-        print(f"No new preferences to add. {len(skipped)} already exist.")
+        print("No new preferences to add. %d already exist." % len(skipped))
         return skipped
 
-    # Build the new section content
     all_prefs = existing_prefs + new_prefs
     section_lines = [
         "",
@@ -139,21 +176,18 @@ def write_to_claude_md(preferences):
         "<!-- Managed by self-improve skill. Safe to edit manually. -->",
     ]
     for p in all_prefs:
-        section_lines.append(f"- {p}")
+        section_lines.append("- %s" % p)
     section_lines.append(SECTION_MARKER_END)
     section_lines.append("")
 
     new_section = "\n".join(section_lines)
 
-    # Replace existing section or append
     if SECTION_MARKER_START in content:
-        # Replace the existing managed section
         lines = content.splitlines()
         new_lines = []
         skip = False
         for line in lines:
             if SECTION_MARKER_START in line or (SECTION_HEADER in line and SECTION_MARKER_START in content):
-                # Find the header line before the marker
                 skip = True
                 continue
             if SECTION_MARKER_END in line:
@@ -164,23 +198,106 @@ def write_to_claude_md(preferences):
             if not skip:
                 new_lines.append(line)
 
-        # Remove trailing blank lines before appending
         while new_lines and new_lines[-1].strip() == "":
             new_lines.pop()
 
         new_content = "\n".join(new_lines) + new_section
     else:
-        # Append to the end
         if content and not content.endswith("\n"):
             content += "\n"
         new_content = content + new_section
 
     CLAUDE_MD.write_text(new_content, encoding="utf-8")
-    print(f"Added {len(new_prefs)} preferences to {CLAUDE_MD}")
+    print("Added %d preferences to %s" % (len(new_prefs), CLAUDE_MD))
     if skipped:
-        print(f"Skipped {len(skipped)} duplicates: {skipped}")
+        print("Skipped %d duplicates: %s" % (len(skipped), skipped))
     return skipped
 
+
+def _write_memory_dir(preferences, memory_dir, label=""):
+    """Write preferences as individual memory files + MEMORY.md index.
+
+    This is the shared format used by both Claude Code native memory
+    and the standalone portable store. Same structure, same files.
+
+    memory_dir/
+    ├── MEMORY.md              ← index with links
+    ├── feedback_some_pref.md  ← individual memory with frontmatter
+    └── feedback_another.md
+    """
+    memory_dir.mkdir(parents=True, exist_ok=True)
+
+    memory_index = memory_dir / "MEMORY.md"
+    index_content = read_file(memory_index)
+    if not index_content:
+        index_content = "# Memory Index\n"
+
+    written = 0
+    for pref in preferences:
+        name = pref.get("category", "General") + ": " + pref["preference"][:60]
+        filename = "feedback_%s.md" % _sanitize_filename(pref["preference"])
+        filepath = memory_dir / filename
+
+        # Skip if file already exists with same preference (dedup)
+        if filepath.exists():
+            existing = read_file(filepath)
+            if pref["preference"].lower() in existing.lower():
+                continue
+
+        description = pref["preference"]
+        if pref.get("context"):
+            description += " — %s" % pref["context"]
+
+        body = "%s\n" % pref["preference"]
+        if pref.get("evidence"):
+            body += "\n**Why:** \"%s\"\n" % pref["evidence"]
+        body += "\n**How to apply:** %s\n" % (pref.get("context") or "Apply when relevant.")
+
+        file_content = "---\nname: %s\ndescription: %s\ntype: feedback\n---\n\n%s" % (
+            name, description, body
+        )
+        filepath.write_text(file_content, encoding="utf-8")
+        written += 1
+
+        # Update index
+        link = "- [%s](%s) — %s" % (filename, filename, pref["preference"][:80])
+        if filename not in index_content:
+            if "## Feedback" not in index_content:
+                index_content += "\n## Feedback\n"
+            index_content += link + "\n"
+
+    memory_index.write_text(index_content, encoding="utf-8")
+    if written:
+        print("Wrote %d memory file(s) to %s%s" % (written, memory_dir, " (%s)" % label if label else ""))
+
+
+# --- Writers: Claude Code native ---
+
+def write_to_claude_memory(preferences, cwd):
+    """Write project-scoped steers to Claude Code's native memory dir."""
+    encoded = _encode_claude_project_path(cwd)
+    if not encoded:
+        return
+    memory_dir = CLAUDE_PROJECTS_DIR / encoded / "memory"
+    _write_memory_dir(preferences, memory_dir, label="claude-native")
+
+
+# --- Writers: Standalone portable store ---
+
+def write_to_standalone_global(preferences):
+    """Write global steers to ~/Documents/AI/self-improve/ as memory files."""
+    base = _get_standalone_dir()
+    _write_memory_dir(preferences, base, label="standalone-global")
+
+
+def write_to_standalone_project(preferences, project_name):
+    """Write project steers to ~/Documents/AI/self-improve/projects/{name}/."""
+    base = _get_standalone_dir()
+    project_dir = base / "projects" / project_name
+    _write_memory_dir(preferences, project_dir, label="standalone-project")
+
+
+# --- Writer: Audit trail ---
 
 def write_to_prefs_log(preferences, session_context=""):
     """Append detailed preference log with evidence and timestamps."""
@@ -189,30 +306,32 @@ def write_to_prefs_log(preferences, session_context=""):
     if not content:
         content = "# Learned Preferences Log\n\n"
         content += "This file logs all preferences learned by the self-improve skill.\n"
-        content += "Sync this file across machines to carry your preferences everywhere.\n"
-        content += "The active preferences are in `~/.claude/CLAUDE.md`.\n\n"
+        content += "Sync this file across machines to carry your preferences everywhere.\n\n"
         content += "---\n\n"
 
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M")
-    entry = f"## {timestamp}"
+    entry = "## %s" % timestamp
     if session_context:
-        entry += f" — {session_context}"
+        entry += " — %s" % session_context
     entry += "\n\n"
 
     for pref in preferences:
-        entry += f"- **{pref.get('category', 'General')}**: {pref['preference']}\n"
+        scope = pref.get("scope", "global")
+        entry += "- **%s** [%s]: %s\n" % (pref.get("category", "General"), scope, pref["preference"])
         if pref.get("context"):
-            entry += f"  - Context: {pref['context']}\n"
+            entry += "  - Context: %s\n" % pref["context"]
         if pref.get("evidence"):
-            entry += f"  - Evidence: \"{pref['evidence']}\"\n"
+            entry += "  - Evidence: \"%s\"\n" % pref["evidence"]
         confidence = pref.get("confidence", "medium")
-        entry += f"  - Confidence: {confidence}\n"
+        entry += "  - Confidence: %s\n" % confidence
     entry += "\n---\n\n"
 
     content += entry
     PREFS_LOG.write_text(content, encoding="utf-8")
-    print(f"Logged {len(preferences)} preferences to {PREFS_LOG}")
+    print("Logged %d preferences to %s" % (len(preferences), PREFS_LOG))
 
+
+# --- Display / Remove ---
 
 def show_preferences():
     """Display current active preferences."""
@@ -221,12 +340,12 @@ def show_preferences():
     if not prefs:
         print("No auto-learned preferences found in ~/.claude/CLAUDE.md")
         return
-    print(f"Active preferences ({len(prefs)}):\n")
+    print("Active preferences (%d):\n" % len(prefs))
     for i, p in enumerate(prefs, 1):
-        print(f"  {i}. {p}")
+        print("  %d. %s" % (i, p))
 
 
-def remove_preference(search_term: str):
+def remove_preference(search_term):
     """Remove a preference matching the search term."""
     content = read_file(CLAUDE_MD)
     existing = extract_existing_preferences(content)
@@ -234,12 +353,11 @@ def remove_preference(search_term: str):
 
     to_remove = [p for p in existing if search_lower in p.lower()]
     if not to_remove:
-        print(f"No preference found matching '{search_term}'")
+        print("No preference found matching '%s'" % search_term)
         return
 
     remaining = [p for p in existing if p not in to_remove]
 
-    # Rebuild the section
     section_lines = [
         "",
         SECTION_HEADER,
@@ -247,12 +365,11 @@ def remove_preference(search_term: str):
         "<!-- Managed by self-improve skill. Safe to edit manually. -->",
     ]
     for p in remaining:
-        section_lines.append(f"- {p}")
+        section_lines.append("- %s" % p)
     section_lines.append(SECTION_MARKER_END)
     section_lines.append("")
     new_section = "\n".join(section_lines)
 
-    # Replace existing section
     lines = content.splitlines()
     new_lines = []
     skip = False
@@ -276,14 +393,20 @@ def remove_preference(search_term: str):
 
     new_content = "\n".join(new_lines) + new_section
     CLAUDE_MD.write_text(new_content, encoding="utf-8")
-    print(f"Removed {len(to_remove)} preference(s): {to_remove}")
+    print("Removed %d preference(s): %s" % (len(to_remove), to_remove))
 
+
+# --- CLI ---
 
 def main():
     parser = argparse.ArgumentParser(description="Manage auto-learned preferences")
     parser.add_argument("--preferences", type=str, help="JSON array of preferences to save")
-    parser.add_argument("--target", choices=["global", "log-only"], default="global",
-                        help="Where to write (global = CLAUDE.md + log, log-only = just the log)")
+    parser.add_argument("--target", choices=["global", "project", "log-only"], default="global",
+                        help="Scope: global (CLAUDE.md + standalone), project (Claude memory + standalone), log-only")
+    parser.add_argument("--project-name", type=str, default="",
+                        help="Project name (for --target project)")
+    parser.add_argument("--project-cwd", type=str, default="",
+                        help="Project cwd (for --target project, used to find Claude memory dir)")
     parser.add_argument("--session-context", type=str, default="",
                         help="Brief description of the session for the log entry")
     parser.add_argument("--show", action="store_true", help="Show current preferences")
@@ -307,7 +430,7 @@ def main():
     try:
         preferences = json.loads(args.preferences)
     except json.JSONDecodeError as e:
-        print(f"Error parsing preferences JSON: {e}", file=sys.stderr)
+        print("Error parsing preferences JSON: %s" % e, file=sys.stderr)
         sys.exit(1)
 
     if not isinstance(preferences, list):
@@ -315,11 +438,23 @@ def main():
         sys.exit(1)
 
     if args.target == "global":
+        # Claude native: CLAUDE.md
         write_to_claude_md(preferences)
+        # Standalone: GLOBAL_PREFERENCE.md
+        write_to_standalone_global(preferences)
+
+    elif args.target == "project":
+        # Claude native: project memory dir
+        if args.project_cwd:
+            write_to_claude_memory(preferences, args.project_cwd)
+        # Standalone: project preferences
+        if args.project_name:
+            write_to_standalone_project(preferences, args.project_name)
+
+    # Always log to audit trail
     write_to_prefs_log(preferences, args.session_context)
 
-    print("\nDone. Preferences will be active in all future Claude sessions on this machine.")
-    print(f"To sync across machines, copy {PREFS_LOG} to ~/.claude/ on other machines.")
+    print("\nDone.")
 
 
 if __name__ == "__main__":

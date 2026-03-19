@@ -244,11 +244,15 @@ def summarize_with_claude(condensed, project):
         '   - Scope adjustments ("skip that", "that\'s too much")\n'
         '   Only include genuine reusable PATTERNS, not one-off task instructions.\n'
         '   If no steers detected, return empty array.\n\n'
+        '   For each steer, classify its SCOPE:\n'
+        '   - "global": applies to ALL projects (e.g., "keep responses shorter", "don\'t plan")\n'
+        '   - "project": applies only to THIS project (e.g., "don\'t reference v1", "use Hono not Express")\n\n'
         'Output ONLY a valid JSON object (no markdown, no explanation):\n'
         '{"summary": ["bullet 1", "bullet 2"], "decisions": "key decisions or empty string", '
         '"open": "open items or empty string", '
         '"steers": [{"category": "...", "preference": "...", "context": "...", '
-        '"evidence": "brief user quote", "confidence": "high|medium"}]}\n\n'
+        '"evidence": "brief user quote", "confidence": "high|medium", '
+        '"scope": "global|project"}]}\n\n'
         '--- SESSION TRANSCRIPT ---\n'
         '%s\n'
         '--- END TRANSCRIPT ---'
@@ -347,23 +351,52 @@ def write_worklog(project, result, event, session_id=None):
         print("[%s] Error writing worklog: %s" % (event, e), file=sys.stderr)
 
 
-def write_steers(steers, session_id, event):
-    """Persist detected steers to self-improve preferences log (log-only, not auto-applied)."""
+def write_steers(steers, session_id, event, project="general", cwd=""):
+    """Persist detected steers — dual-write to Claude native + standalone store.
+
+    Global steers  → CLAUDE.md + ~/Documents/AI/self-improve/GLOBAL_PREFERENCE.md
+    Project steers → Claude memory dir + ~/Documents/AI/self-improve/projects/{project}/
+    All steers     → preferences-log.md (audit trail)
+    """
     if not steers:
         return
     write_script = Path(__file__).parent.parent.parent / "self-improve" / "scripts" / "write_preferences.py"
     if not write_script.exists():
         return
-    cmd = [
-        sys.executable, str(write_script),
-        "--preferences", json.dumps(steers),
-        "--target", "log-only",
-        "--session-context", "Auto-detected via %s hook (%s)" % (event, session_id or "unknown"),
-    ]
-    try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-    except Exception:
-        pass
+
+    session_ctx = "Auto-detected via %s hook (%s)" % (event, session_id or "unknown")
+
+    # Split steers by scope
+    global_steers = [s for s in steers if s.get("scope", "global") == "global"]
+    project_steers = [s for s in steers if s.get("scope") == "project"]
+
+    # Write global steers
+    if global_steers:
+        cmd = [
+            sys.executable, str(write_script),
+            "--preferences", json.dumps(global_steers),
+            "--target", "global",
+            "--session-context", session_ctx,
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        except Exception:
+            pass
+
+    # Write project steers
+    if project_steers:
+        cmd = [
+            sys.executable, str(write_script),
+            "--preferences", json.dumps(project_steers),
+            "--target", "project",
+            "--project-name", project,
+            "--project-cwd", cwd,
+            "--session-context", session_ctx,
+        ]
+        try:
+            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        except Exception:
+            pass
 
 
 def main():
@@ -405,7 +438,7 @@ def main():
 
     write_worklog(project, result, event, session_id=session_id)
     steers = result.get("steers", [])
-    write_steers(steers, session_id, event)
+    write_steers(steers, session_id, event, project=project, cwd=cwd)
 
     # Mark these lines as processed
     state[key] = total_lines
