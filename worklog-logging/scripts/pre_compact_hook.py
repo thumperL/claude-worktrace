@@ -319,45 +319,35 @@ def fallback_summary(messages):
 
 
 def write_worklog(project, result, event, session_id=None):
-    """Call write_worklog.py to persist the entry."""
-    write_script = Path(__file__).parent / "write_worklog.py"
-    if not write_script.exists():
-        return
-
-    now = datetime.now()
-    cmd = [
-        sys.executable, str(write_script),
-        "--date", now.strftime("%Y-%m-%d"),
-        "--time", now.strftime("%H:%M"),
-        "--project", project,
-        "--summary", json.dumps(result["summary"]),
-    ]
-    if result.get("decisions"):
-        cmd.extend(["--decisions", result["decisions"]])
-    if result.get("open"):
-        cmd.extend(["--open", result["open"]])
-    if session_id:
-        cmd.extend(["--session", session_id])
+    """Persist the worklog entry directly (no subprocess)."""
+    script_dir = str(Path(__file__).parent)
+    if script_dir not in sys.path:
+        sys.path.append(script_dir)
 
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=10)
-        if proc.returncode == 0:
-            print("[%s] Worklog entry saved for project: %s" % (event, project))
-            for line in proc.stdout.strip().split("\n"):
-                print(line)
-        else:
-            print("[%s] write_worklog.py failed: %s" % (event, proc.stderr), file=sys.stderr)
+        from write_worklog import write_entry, get_hostname
+    except ImportError:
+        return
+
+    try:
+        now = datetime.now()
+        write_entry(
+            date_str=now.strftime("%Y-%m-%d"),
+            time_str=now.strftime("%H:%M"),
+            machine=get_hostname(),
+            session_id=session_id or "sess-unknown",
+            project=project,
+            summary=result["summary"],
+            decisions=result.get("decisions"),
+            open_items=result.get("open"),
+        )
+        print("[%s] Worklog entry saved for project: %s" % (event, project))
     except Exception as e:
         print("[%s] Error writing worklog: %s" % (event, e), file=sys.stderr)
 
 
 def write_steers(steers, session_id, event, project="general", cwd=""):
-    """Persist detected steers — dual-write to Claude native + standalone store.
-
-    Global steers  → CLAUDE.md + ~/Documents/AI/self-improve/GLOBAL_PREFERENCE.md
-    Project steers → Claude memory dir + ~/Documents/AI/self-improve/projects/{project}/
-    All steers     → preferences-log.md (audit trail)
-    """
+    """Persist detected steers — dual-write to Claude native + standalone store."""
     if not steers:
         return
     write_script = Path(__file__).parent.parent.parent / "self-improve" / "scripts" / "write_preferences.py"
@@ -365,38 +355,22 @@ def write_steers(steers, session_id, event, project="general", cwd=""):
         return
 
     session_ctx = "Auto-detected via %s hook (%s)" % (event, session_id or "unknown")
-
-    # Split steers by scope
-    global_steers = [s for s in steers if s.get("scope", "global") == "global"]
-    project_steers = [s for s in steers if s.get("scope") == "project"]
-
-    # Write global steers
-    if global_steers:
-        cmd = [
-            sys.executable, str(write_script),
-            "--preferences", json.dumps(global_steers),
-            "--target", "global",
-            "--session-context", session_ctx,
-        ]
-        try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        except Exception:
-            pass
-
-    # Write project steers
-    if project_steers:
-        cmd = [
-            sys.executable, str(write_script),
-            "--preferences", json.dumps(project_steers),
-            "--target", "project",
-            "--project-name", project,
-            "--project-cwd", cwd,
-            "--session-context", session_ctx,
-        ]
-        try:
-            subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-        except Exception:
-            pass
+    cmd = [
+        sys.executable, str(write_script),
+        "--preferences", json.dumps(steers),
+        "--target", "auto",
+        "--project-name", project,
+        "--project-cwd", cwd,
+        "--session-context", session_ctx,
+    ]
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if proc.returncode != 0:
+            print("[%s] write_preferences.py failed (exit %d): %s" % (event, proc.returncode, proc.stderr.strip()), file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("[%s] write_preferences.py timed out" % event, file=sys.stderr)
+    except Exception as e:
+        print("[%s] Error writing steers: %s" % (event, e), file=sys.stderr)
 
 
 def main():

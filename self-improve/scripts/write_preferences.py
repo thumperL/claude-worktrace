@@ -183,25 +183,13 @@ def write_to_claude_md(preferences):
     new_section = "\n".join(section_lines)
 
     if SECTION_MARKER_START in content:
-        lines = content.splitlines()
-        new_lines = []
-        skip = False
-        for line in lines:
-            if SECTION_MARKER_START in line or (SECTION_HEADER in line and SECTION_MARKER_START in content):
-                skip = True
-                continue
-            if SECTION_MARKER_END in line:
-                skip = False
-                continue
-            if SECTION_HEADER in line and skip is False and SECTION_MARKER_START in content:
-                continue
-            if not skip:
-                new_lines.append(line)
-
-        while new_lines and new_lines[-1].strip() == "":
-            new_lines.pop()
-
-        new_content = "\n".join(new_lines) + new_section
+        # Use partition for safe single-occurrence splitting
+        if SECTION_HEADER in content:
+            before, _, _ = content.partition(SECTION_HEADER)
+        else:
+            before, _, _ = content.partition(SECTION_MARKER_START)
+        _, _, after = content.rpartition(SECTION_MARKER_END)
+        new_content = before.rstrip("\n") + new_section + after
     else:
         if content and not content.endswith("\n"):
             content += "\n"
@@ -401,8 +389,8 @@ def remove_preference(search_term):
 def main():
     parser = argparse.ArgumentParser(description="Manage auto-learned preferences")
     parser.add_argument("--preferences", type=str, help="JSON array of preferences to save")
-    parser.add_argument("--target", choices=["global", "project", "log-only"], default="global",
-                        help="Scope: global (CLAUDE.md + standalone), project (Claude memory + standalone), log-only")
+    parser.add_argument("--target", choices=["global", "project", "log-only", "auto"], default="global",
+                        help="Scope: global, project, log-only, or auto (split by steer scope field)")
     parser.add_argument("--project-name", type=str, default="",
                         help="Project name (for --target project)")
     parser.add_argument("--project-cwd", type=str, default="",
@@ -437,22 +425,36 @@ def main():
         print("Preferences must be a JSON array", file=sys.stderr)
         sys.exit(1)
 
-    if args.target == "global":
-        # Claude native: CLAUDE.md
+    if args.target == "auto":
+        # Split by scope field — one invocation handles both scopes
+        global_prefs = [p for p in preferences if p.get("scope", "global") == "global"]
+        project_prefs = [p for p in preferences if p.get("scope") == "project"]
+        if global_prefs:
+            write_to_claude_md(global_prefs)
+            write_to_standalone_global(global_prefs)
+        if project_prefs and args.project_cwd:
+            write_to_claude_memory(project_prefs, args.project_cwd)
+        if project_prefs and args.project_name:
+            write_to_standalone_project(project_prefs, args.project_name)
+        if project_prefs and not args.project_cwd and not args.project_name:
+            print("Warning: %d project-scoped steers found but no project context provided. "
+                  "Logged to audit trail only." % len(project_prefs), file=sys.stderr)
+        write_to_prefs_log(preferences, args.session_context)
+
+    elif args.target == "global":
         write_to_claude_md(preferences)
-        # Standalone: GLOBAL_PREFERENCE.md
         write_to_standalone_global(preferences)
+        write_to_prefs_log(preferences, args.session_context)
 
     elif args.target == "project":
-        # Claude native: project memory dir
         if args.project_cwd:
             write_to_claude_memory(preferences, args.project_cwd)
-        # Standalone: project preferences
         if args.project_name:
             write_to_standalone_project(preferences, args.project_name)
+        write_to_prefs_log(preferences, args.session_context)
 
-    # Always log to audit trail
-    write_to_prefs_log(preferences, args.session_context)
+    else:
+        write_to_prefs_log(preferences, args.session_context)
 
     print("\nDone.")
 
