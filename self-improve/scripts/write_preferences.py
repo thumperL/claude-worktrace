@@ -183,10 +183,12 @@ def write_to_claude_md(preferences):
     new_section = "\n".join(section_lines)
 
     if SECTION_MARKER_START in content:
-        # Cut out everything from header through end marker
-        before = content.split(SECTION_HEADER)[0] if SECTION_HEADER in content else content.split(SECTION_MARKER_START)[0]
-        after_parts = content.split(SECTION_MARKER_END)
-        after = after_parts[1] if len(after_parts) > 1 else ""
+        # Use partition for safe single-occurrence splitting
+        if SECTION_HEADER in content:
+            before, _, _ = content.partition(SECTION_HEADER)
+        else:
+            before, _, _ = content.partition(SECTION_MARKER_START)
+        _, _, after = content.rpartition(SECTION_MARKER_END)
         new_content = before.rstrip("\n") + new_section + after
     else:
         if content and not content.endswith("\n"):
@@ -434,6 +436,9 @@ def main():
             write_to_claude_memory(project_prefs, args.project_cwd)
         if project_prefs and args.project_name:
             write_to_standalone_project(project_prefs, args.project_name)
+        if project_prefs and not args.project_cwd and not args.project_name:
+            print("Warning: %d project-scoped steers found but no project context provided. "
+                  "Logged to audit trail only." % len(project_prefs), file=sys.stderr)
         write_to_prefs_log(preferences, args.session_context)
 
     elif args.target == "global":

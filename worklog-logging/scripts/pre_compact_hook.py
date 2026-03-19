@@ -320,13 +320,16 @@ def fallback_summary(messages):
 
 def write_worklog(project, result, event, session_id=None):
     """Persist the worklog entry directly (no subprocess)."""
-    try:
-        # Import write_worklog.py from same directory
-        script_dir = str(Path(__file__).parent)
-        if script_dir not in sys.path:
-            sys.path.insert(0, script_dir)
-        from write_worklog import write_entry, get_hostname
+    script_dir = str(Path(__file__).parent)
+    if script_dir not in sys.path:
+        sys.path.append(script_dir)
 
+    try:
+        from write_worklog import write_entry, get_hostname
+    except ImportError:
+        return
+
+    try:
         now = datetime.now()
         write_entry(
             date_str=now.strftime("%Y-%m-%d"),
@@ -361,9 +364,13 @@ def write_steers(steers, session_id, event, project="general", cwd=""):
         "--session-context", session_ctx,
     ]
     try:
-        subprocess.run(cmd, capture_output=True, text=True, timeout=15)
-    except Exception:
-        pass
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=15)
+        if proc.returncode != 0:
+            print("[%s] write_preferences.py failed (exit %d): %s" % (event, proc.returncode, proc.stderr.strip()), file=sys.stderr)
+    except subprocess.TimeoutExpired:
+        print("[%s] write_preferences.py timed out" % event, file=sys.stderr)
+    except Exception as e:
+        print("[%s] Error writing steers: %s" % (event, e), file=sys.stderr)
 
 
 def main():
