@@ -182,6 +182,49 @@ Session starts
 
 If the `claude` CLI is not available, the hook falls back to extracting user requests from the transcript as summary bullets.
 
+## Claude Desktop Installation
+
+If installing for Claude Desktop (not CLI), hooks are not needed. The skill operates as a pure skill with proactive triggers.
+
+### Step 1: Install skill files
+
+```bash
+mkdir -p ~/.claude/skills/worklog-logging
+unzip -o worklog-logging.skill -d ~/.claude/skills/worklog-logging/
+```
+
+### Step 2: Create storage directories
+
+```bash
+mkdir -p ~/Documents/AI/worklog
+mkdir -p ~/Documents/AI/self-improve
+```
+
+### Step 3: Skip hooks
+
+No hooks are needed for Desktop. The skill triggers proactively via its SKILL.md instructions — Claude will offer to log work at key moments (high context, task completion, before /clear, session wind-down).
+
+### Step 4: Verify
+
+1. Skill files exist:
+   ```bash
+   ls ~/.claude/skills/worklog-logging/SKILL.md
+   ls ~/.claude/skills/worklog-logging/scripts/write_worklog.py
+   ls ~/.claude/skills/worklog-logging/scripts/pre_compact_hook.py
+   ls ~/.claude/skills/worklog-logging/scripts/manual_worklog.sh
+   ```
+
+2. Storage directory exists:
+   ```bash
+   ls -d ~/Documents/AI/worklog
+   ```
+
+### Notes
+
+- **No Claude CLI required**: In Desktop mode, AI summaries use Claude's own capabilities inline — the `claude` command is not needed.
+- **Bash optional**: If bash is not available in your Desktop setup, the skill falls back to writing worklog entries directly using the Write/Edit tool (text-only mode). See SKILL.md "Desktop mode" section.
+- **Trade-off**: CLI hooks are deterministic (always fire at the right moment). Desktop skill triggers are advisory (Claude proactively offers but isn't guaranteed). Both produce the same output format.
+
 ## Companion skills
 
 This skill works best with its companions. Install them too:

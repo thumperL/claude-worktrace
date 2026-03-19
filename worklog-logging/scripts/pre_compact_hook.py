@@ -15,6 +15,7 @@ Input (JSON via stdin):
   - cwd: current working directory
 """
 
+import argparse
 import hashlib
 import json
 import os
@@ -373,7 +374,105 @@ def write_steers(steers, session_id, event, project="general", cwd=""):
         print("[%s] Error writing steers: %s" % (event, e), file=sys.stderr)
 
 
-def main():
+def _parse_cli_args():
+    """Parse CLI arguments for Desktop/manual invocation mode."""
+    parser = argparse.ArgumentParser(
+        description="AI-powered worklog generation. "
+                    "Can be invoked via hook (JSON stdin) or CLI args (Desktop/manual mode)."
+    )
+    parser.add_argument(
+        "--summary", type=str,
+        help='Direct summary as JSON array: \'["bullet 1", "bullet 2"]\' or plain text'
+    )
+    parser.add_argument(
+        "--transcript-path", type=str,
+        help="Path to session transcript JSONL file"
+    )
+    parser.add_argument(
+        "--session-id", type=str,
+        help="Session identifier (e.g. sess-f3a1)"
+    )
+    parser.add_argument(
+        "--cwd", type=str, default="",
+        help="Current working directory (for project detection)"
+    )
+    parser.add_argument(
+        "--event", type=str, default="Manual",
+        help="Event name (default: Manual)"
+    )
+    parser.add_argument(
+        "--project", type=str,
+        help="Project name (overrides auto-detection from cwd)"
+    )
+    return parser.parse_args()
+
+
+def main_cli(args):
+    """CLI-arg mode: Desktop or manual invocation without hooks."""
+    project = args.project or detect_project(args.cwd or os.getcwd())
+    session_id = args.session_id or ("sess-%04x" % (hash(str(datetime.now())) & 0xFFFF))
+    event = args.event
+
+    if args.summary:
+        # Direct summary mode — skip transcript parsing and AI analysis
+        try:
+            summary_list = json.loads(args.summary)
+            if isinstance(summary_list, str):
+                summary_list = [summary_list]
+        except (json.JSONDecodeError, TypeError):
+            # Treat as plain text — split on newlines or use as single bullet
+            text = args.summary.strip()
+            summary_list = [line.strip().lstrip("- ") for line in text.split("\n") if line.strip()]
+            if not summary_list:
+                summary_list = [text]
+
+        result = {"summary": summary_list, "decisions": "", "open": "", "steers": []}
+        write_worklog(project, result, event, session_id=session_id)
+        return
+
+    if args.transcript_path:
+        # Transcript mode — same as hook but using CLI-provided path
+        transcript_path = args.transcript_path
+        if not Path(transcript_path).exists():
+            print("Transcript not found: %s" % transcript_path, file=sys.stderr)
+            sys.exit(1)
+
+        state = _load_state()
+        key = _transcript_key(transcript_path)
+        start_line = state.get(key, 0)
+
+        messages, total_lines = parse_transcript(transcript_path, start_line)
+        if len(messages) < 4:
+            print("Not enough messages for a meaningful summary (%d found)." % len(messages))
+            state[key] = total_lines
+            _save_state(state)
+            return
+
+        condensed = condense_transcript(messages)
+        if not condensed or len(condensed) < 50:
+            state[key] = total_lines
+            _save_state(state)
+            return
+
+        result = summarize_with_claude(condensed, project)
+        if not result:
+            result = fallback_summary(messages)
+
+        write_worklog(project, result, event, session_id=session_id)
+        steers = result.get("steers", [])
+        write_steers(steers, session_id, event, project=project, cwd=args.cwd)
+
+        state[key] = total_lines
+        _save_state(state)
+        return
+
+    # No summary and no transcript — show help
+    print("Error: provide --summary or --transcript-path", file=sys.stderr)
+    sys.exit(1)
+
+
+def main_hook():
+    """Hook mode: reads JSON from stdin (original behavior)."""
     hook_input = read_stdin()
     transcript_path = hook_input.get("transcript_path", "")
     cwd = hook_input.get("cwd", "")
@@ -417,6 +516,17 @@ def main():
     # Mark these lines as processed
     state[key] = total_lines
     _save_state(state)
+
+
+def main():
+    # If CLI args are provided (any --flag), use CLI mode
+    # Otherwise, use hook mode (read JSON from stdin)
+    has_cli_args = len(sys.argv) > 1
+    if has_cli_args:
+        args = _parse_cli_args()
+        main_cli(args)
+    else:
+        main_hook()
 
 
 if __name__ == "__main__":

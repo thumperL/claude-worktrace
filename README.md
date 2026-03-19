@@ -10,6 +10,20 @@ Auto-captures your Claude Code sessions — what you did, what decisions you mad
 
 **How it works:** You work normally. On compaction/clear/exit, a hook reads the transcript, Sonnet analyzes it in one API call, and writes both a worklog entry and any detected preferences. Everything syncs to `~/Documents/AI/` via iCloud and into Claude's native memory so it's active next session.
 
+## Platform Compatibility
+
+Works in both Claude Code CLI and Claude Desktop:
+
+| Feature | Claude Code (CLI) | Claude Desktop |
+|---------|-------------------|----------------|
+| worklog-logging | Automatic via hooks (PreCompact, SessionEnd, /clear) | Proactive — Claude offers to log at key moments |
+| self-improve | Auto-detect steers via hooks + manual flow | Manual flow only — more proactive steer detection |
+| worklog-analysis | On-demand | On-demand (unchanged) |
+| Bash scripts | Required | Optional — text-only fallback available |
+| AI summaries | Via `claude -p --model sonnet` subprocess | Via Claude's own capabilities inline |
+
+**Trade-off:** CLI hooks are deterministic (always fire at the right moment). Desktop skill triggers are advisory (Claude proactively offers). Both produce the same worklog and preferences output format.
+
 ## Install
 
 1. Download all three `.skill` files from the [latest release](../../releases/latest)

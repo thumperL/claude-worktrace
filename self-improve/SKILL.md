@@ -118,7 +118,30 @@ The script handles:
 - Writing to `~/Documents/AI/self-improve/preferences-log.md` (detailed log with timestamps, synced across devices)
 - Deduplication (won't add preferences that already exist)
 
-If the script isn't available, write directly to `~/.claude/CLAUDE.md` under a `## User Preferences (Auto-Learned)` section.
+If the script isn't available (or bash is unavailable, e.g. in Claude Desktop), write directly using the Write/Edit tool:
+
+1. Read `~/.claude/CLAUDE.md`
+2. Find the `<!-- self-improve:start -->` / `<!-- self-improve:end -->` markers
+3. Append new preferences inside the markers:
+   ```
+   - [Category] Preference text (learned YYYY-MM-DD)
+   ```
+4. If markers don't exist, create the section:
+   ```markdown
+   ## User Preferences (Auto-Learned)
+   <!-- self-improve:start -->
+   - [Category] Preference text (learned YYYY-MM-DD)
+   <!-- self-improve:end -->
+   ```
+5. Also append to `~/Documents/AI/self-improve/preferences-log.md`:
+   ```markdown
+   ## YYYY-MM-DD HH:MM — [Category]
+   - **Preference**: The preference text
+   - **Evidence**: "brief user quote that triggered this"
+   - **Scope**: global|project
+   - **Source**: Desktop session (manual)
+   ---
+   ```
 
 ### Step 5: Trigger worklog
 
@@ -156,6 +179,15 @@ PreCompact and SessionEnd hooks (from the worklog-logging skill) automatically d
 - Detected steers are logged to `~/Documents/AI/self-improve/preferences-log.md` for later review
 - The manual flow (conversation-based, user-confirmed) remains the **only** path to CLAUDE.md
 - Steers are logged with `--target log-only` — they are never auto-applied
+
+### Desktop mode
+
+In Claude Desktop, hooks are not available, so automatic steer capture between sessions does not occur. To compensate, this skill should be **more proactive** about detecting steers during the conversation:
+
+- **Lower threshold**: Trigger at 2 steers instead of 3 in Desktop — fewer automatic captures means more manual captures needed
+- **Earlier context trigger**: Analyze for steers at 60%+ context instead of 85%+ — don't wait until it's almost too late
+- **Inline presentation**: Present detected steers during the conversation when noticed, rather than waiting for a dedicated review step
+- **No auto-detected steers**: The "review detected steers" feature only contains entries from CLI sessions that had hooks active. In Desktop-only usage, the preferences log will only contain manually-confirmed entries.
 
 ### Reviewing detected steers
 

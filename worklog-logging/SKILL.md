@@ -139,6 +139,73 @@ The hook also detects user steering patterns (steers) from the same transcript i
 
 **Important:** Steers are NOT auto-applied to CLAUDE.md. Use the self-improve skill's manual flow to review and confirm detected steers before promoting them to active preferences.
 
+## Desktop mode (pure skill, no hooks)
+
+In Claude Desktop, hooks are not available. Instead, this skill operates proactively — Claude offers to capture worklogs at key moments during the conversation.
+
+### When to trigger (Desktop)
+
+Be proactive. In Desktop mode there are no automatic hooks, so YOU must initiate worklog capture:
+
+1. **High context (60%+)**: When context usage is getting high, proactively capture a worklog entry summarizing work done so far. Don't wait for 85% — by then it may be too late.
+2. **Task milestone completed**: When a significant task is finished (feature implemented, bug fixed, investigation concluded), offer to log the accomplishment.
+3. **Before /clear**: If the user is about to clear context, capture a worklog entry FIRST.
+4. **Session wind-down**: When the user signals they're wrapping up ("thanks", "that's all", "goodbye", "done for now"), capture remaining work before they leave.
+
+### How to invoke (Desktop)
+
+**Path A — With bash access:**
+
+```bash
+python3 ~/.claude/skills/worklog-logging/scripts/pre_compact_hook.py \
+  --summary '["Fixed auth race condition — stale tokens survived logout", "Researched PKCE vs implicit flow"]' \
+  --cwd "$(pwd)" \
+  --project "acme-api"
+```
+
+Or use the manual wrapper:
+
+```bash
+bash ~/.claude/skills/worklog-logging/scripts/manual_worklog.sh \
+  --project "acme-api" \
+  "Fixed auth race condition" "Researched PKCE vs implicit flow"
+```
+
+**Path B — Without bash (text-only fallback):**
+
+If bash is not available, write the worklog entry directly using the Write/Edit tool. Append to `~/Documents/AI/worklog/YYYY-MM-DD-{hostname}.md` (create the file if it doesn't exist).
+
+Use `hostname -s` equivalent or ask the user for their machine name. Follow this exact format:
+
+```markdown
+# Worklog — YYYY-MM-DD (hostname)
+
+### HH:MM — [Project/Context] `sess-XXXX`
+
+**Summary:**
+- [What problem was solved and WHY — enough detail for a resume or performance review]
+- [Key decisions made and their reasoning]
+
+**Decisions:** [Optional — architectural or design decisions]
+
+**Open:** [Optional — what's still pending]
+
+---
+```
+
+The header line (`# Worklog — ...`) should only appear once at the top of the file. Subsequent entries are appended below.
+
+Generate a random 4-character session ID (`sess-XXXX`) for the entry. If you already have a session identifier, use the first 4 characters prefixed with `sess-`.
+
+### Desktop vs CLI comparison
+
+| Aspect | CLI (hooks) | Desktop (pure skill) |
+|--------|-------------|---------------------|
+| Trigger | Automatic (PreCompact, SessionEnd, /clear) | Proactive (Claude offers at key moments) |
+| AI summary | Via `claude -p --model sonnet` subprocess | Via Claude's own analysis inline |
+| Reliability | Deterministic — always fires | Advisory — Claude proactively offers |
+| Output format | Identical | Identical |
+
 ## Integration with self-improve
 
 When self-improve fires, it should also trigger this skill. Present both outputs (preferences learned + worklog entry) in a single confirmation to the user. One interruption, two outputs saved.

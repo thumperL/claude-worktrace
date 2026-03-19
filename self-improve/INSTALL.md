@@ -46,6 +46,43 @@ However, if the **worklog-logging** skill is installed, its PreCompact, UserProm
 
 The automatic steers are log-only — they are NOT applied to CLAUDE.md. The manual flow (conversation-based, user-confirmed) remains the only path to active preferences. Use "review detected steers" to see what was captured and promote items you want to keep.
 
+## Claude Desktop Installation
+
+If installing for Claude Desktop (not CLI), the setup is simpler — no hooks are involved.
+
+### Step 1: Install skill files
+
+```bash
+mkdir -p ~/.claude/skills/self-improve
+unzip -o self-improve.skill -d ~/.claude/skills/self-improve/
+```
+
+### Step 2: Create storage directory
+
+```bash
+mkdir -p ~/Documents/AI/self-improve
+```
+
+### Step 3: Verify
+
+1. Skill files exist:
+   ```bash
+   ls ~/.claude/skills/self-improve/SKILL.md
+   ls ~/.claude/skills/self-improve/scripts/write_preferences.py
+   ls ~/.claude/skills/self-improve/agents/analyzer.md
+   ```
+
+2. CLAUDE.md is writable:
+   ```bash
+   touch ~/.claude/CLAUDE.md && echo "CLAUDE.md writable: OK"
+   ```
+
+### Notes
+
+- **No hooks needed**: This skill never had its own hooks. It triggers based on conversation patterns.
+- **Automatic steer capture unavailable**: In Desktop, the worklog-logging hooks that auto-detect steers are not available. The skill compensates by being more proactive (triggers at 2 steers instead of 3, analyzes at 60% context instead of 85%).
+- **Bash optional**: If bash is not available, the skill writes preferences directly to `~/.claude/CLAUDE.md` using the Write/Edit tool. See SKILL.md Step 4 for the text-only format.
+
 ## How it persists across sessions
 
 - **Active preferences** go to `~/.claude/CLAUDE.md` under a managed `<!-- self-improve:start/end -->` section
