@@ -1,4 +1,4 @@
-name: Package and Release Skills
+name: Validate and Release
 
 on:
   push:
