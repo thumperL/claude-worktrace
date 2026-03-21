@@ -1,0 +1,15 @@
+{
+  "name": "claude-worktrace",
+  "version": "1.0.0",
+  "description": "Auto-capture Claude Code sessions as worklogs and learn from user steering patterns",
+  "owner": {
+    "name": "thumperL"
+  },
+  "plugins": [
+    {
+      "name": "claude-worktrace",
+      "source": "./",
+      "description": "Auto-captures Claude Code sessions as narrative worklogs and detects user steering patterns"
+    }
+  ]
+}

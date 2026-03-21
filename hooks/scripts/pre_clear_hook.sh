@@ -11,6 +11,6 @@ INPUT=$(cat)
 # Handles both "prompt": "/clear" and "prompt":"/clear" (with/without space)
 case "$INPUT" in
     *'"prompt": "/clear'*|*'"prompt":"/clear'*)
-        echo "$INPUT" | python3 ~/.claude/skills/worklog-logging/scripts/pre_compact_hook.py
+        echo "$INPUT" | python3 "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_compact_hook.py"
         ;;
 esac

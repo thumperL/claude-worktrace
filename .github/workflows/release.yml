@@ -26,18 +26,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Package skills
-        run: |
-          cd worklog-logging && zip -r ../worklog-logging.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
-          cd self-improve && zip -r ../self-improve.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
-          cd worklog-analysis && zip -r ../worklog-analysis.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
-          ls -lh *.skill
+      - name: Validate plugin manifest
+        run: python3 -m json.tool .claude-plugin/plugin.json > /dev/null
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            worklog-logging.skill
-            self-improve.skill
-            worklog-analysis.skill
           generate_release_notes: true

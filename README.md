@@ -12,36 +12,52 @@ Auto-captures your Claude Code sessions — what you did, what decisions you mad
 
 ## Install
 
-1. Download all three `.skill` files from the [latest release](../../releases/latest)
-2. Open Claude Code **in the directory where you downloaded them** and paste:
-
-```
-I have three .skill files to install: worklog-logging.skill, self-improve.skill, and worklog-analysis.skill.
-
-For each one:
-1. Read the INSTALL.md inside the zip to understand the steps
-2. Unzip into ~/.claude/skills/{skill-name}/
-3. Create required directories (~/Documents/AI/worklog, ~/Documents/AI/self-improve)
-4. Make shell scripts executable (chmod +x)
-5. Register hooks in ~/.claude/settings.json (merge, don't overwrite)
-6. Run the verification checks from INSTALL.md
-
-Start with worklog-logging (it has the hooks), then self-improve, then worklog-analysis.
-```
-
-3. Claude will read each INSTALL.md and do everything. Verify it worked:
-
 ```bash
-python3 ~/.claude/skills/worklog-logging/scripts/write_worklog.py --info
-python3 ~/.claude/skills/self-improve/scripts/write_preferences.py --show
-python3 ~/.claude/skills/worklog-analysis/scripts/analyze_worklog.py --info
+claude plugins add github:thumperL/claude-worktrace
 ```
+
+That's it. The plugin registers hooks and skills automatically.
+
+### Migrating from `.skill` zip install
+
+If you previously installed via `.skill` files:
+
+1. Remove manual hooks from `~/.claude/settings.json` (the `PreCompact`, `UserPromptSubmit`, and `SessionEnd` entries pointing to `~/.claude/skills/worklog-logging/`)
+2. Remove the old skill directories: `rm -rf ~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}`
+3. Install the plugin: `claude plugins add github:thumperL/claude-worktrace`
 
 ## Requirements
 
 - Claude Code CLI (`claude` in PATH)
 - Python 3.9+ (macOS system Python works)
 - `~/Documents/AI/` directory (iCloud sync recommended)
+
+## Project Structure
+
+```
+claude-worktrace/
+├── .claude-plugin/
+│   └── plugin.json
+├── skills/
+│   ├── worklog-logging/SKILL.md
+│   ├── worklog-analysis/SKILL.md
+│   └── self-improve/
+│       ├── SKILL.md
+│       └── references/pattern_categories.md
+├── agents/
+│   └── analyzer.md
+├── hooks/
+│   ├── hooks.json
+│   └── scripts/
+│       ├── pre_compact_hook.py
+│       ├── pre_clear_hook.sh
+│       └── session_end_wrapper.sh
+├── scripts/
+│   ├── write_worklog.py
+│   ├── write_preferences.py
+│   └── analyze_worklog.py
+└── tests/test_python39_compat.py
+```
 
 ## Storage
 
@@ -66,4 +82,4 @@ python3 ~/.claude/skills/worklog-analysis/scripts/analyze_worklog.py --info
 git tag -a v0.3.0 -m "description" && git push origin v0.3.0
 ```
 
-GitHub Action validates Python 3.9 compatibility, packages each skill into a `.skill` zip, and attaches them to a release.
+GitHub Action validates Python 3.9 compatibility and creates a release.

@@ -58,7 +58,7 @@ Use the Agent tool to spawn an analyzer:
 
 ```
 Prompt for the subagent:
-"Read the analyzer instructions at ${CLAUDE_SKILL_DIR}/agents/analyzer.md
+"Read the analyzer instructions at ${CLAUDE_PLUGIN_ROOT}/agents/analyzer.md
 
 Then analyze this conversation transcript for user steering patterns:
 
@@ -108,7 +108,7 @@ Keep it SHORT. The user wants to see what you learned and confirm quickly.
 Write preferences using the bundled script:
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/scripts/write_preferences.py" \
+python "${CLAUDE_PLUGIN_ROOT}/scripts/write_preferences.py" \
   --preferences '[{"category": "...", "preference": "...", "context": "...", "evidence": "..."}]' \
   --target global
 ```
@@ -151,17 +151,9 @@ If a new preference contradicts an existing one:
 
 ## Automatic steer capture (hooks)
 
-PreCompact and SessionEnd hooks (from the worklog-logging skill) automatically detect steering patterns from each transcript segment. This happens without user intervention:
+Hooks in `hooks/hooks.json` automatically detect steering patterns on PreCompact/SessionEnd and log them to `~/Documents/AI/self-improve/preferences-log.md`. Steers are never auto-applied — the manual flow (conversation-based, user-confirmed) remains the only path to CLAUDE.md.
 
-- Detected steers are logged to `~/Documents/AI/self-improve/preferences-log.md` for later review
-- The manual flow (conversation-based, user-confirmed) remains the **only** path to CLAUDE.md
-- Steers are logged with `--target log-only` — they are never auto-applied
-
-### Reviewing detected steers
-
-Trigger: "review detected steers", "what have you learned", "show auto-detected preferences"
-
-When triggered, read the preferences log, identify entries marked as "Auto-detected via [hook]", and present unconfirmed items for the user to promote to active preferences or dismiss.
+**Reviewing detected steers:** Say "review detected steers", "what have you learned", or "show auto-detected preferences" to review and promote unconfirmed items.
 
 ## Recovery
 

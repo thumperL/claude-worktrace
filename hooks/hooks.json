@@ -1,0 +1,15 @@
+{
+  "description": "Auto-capture worklogs and detect user steering patterns",
+  "hooks": {
+    "PreCompact": [{
+      "hooks": [{ "type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_compact_hook.py" }]
+    }],
+    "UserPromptSubmit": [{
+      "matcher": "",
+      "hooks": [{ "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_clear_hook.sh" }]
+    }],
+    "SessionEnd": [{
+      "hooks": [{ "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session_end_wrapper.sh" }]
+    }]
+  }
+}

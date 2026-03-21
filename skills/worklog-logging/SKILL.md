@@ -81,63 +81,21 @@ Focus on the WHAT and WHY, never the HOW (tools used, files touched, tech stack)
    Save to worklog?
    ```
 4. **On confirmation, persist**:
-   Run the bundled Python script in this skill's `scripts/` directory:
+   Run the bundled Python script:
    ```bash
-   python3 "${CLAUDE_SKILL_DIR}/scripts/write_worklog.py" \
+   python3 "${CLAUDE_PLUGIN_ROOT}/scripts/write_worklog.py" \
      --date "2026-03-08" --time "14:30" --machine "macbook-pro" \
      --session "sess-f3a1" --project "acme-api" \
      --summary '["Fixed auth token refresh race condition — stale tokens survived logout", "Researched PKCE vs implicit flow, chose PKCE for public client security"]' \
      --decisions "Chose PKCE over implicit flow" \
      --artifacts "PR #142" --open "Update API docs"
    ```
-   > **Note:** `${CLAUDE_SKILL_DIR}` resolves to this skill's installation directory automatically.
 
-## Auto-capture via AI-powered hooks
+## Auto-capture via hooks
 
-This skill uses **command hooks** that spawn a Claude subagent (`claude -p --model sonnet`) to analyze the session transcript and generate meaningful, narrative worklog entries automatically.
+Hooks in `hooks/hooks.json` fire on PreCompact, `/clear`, and SessionEnd. Each reads the transcript, uses `claude -p --model sonnet` to generate a narrative summary, and persists it via `write_worklog.py`. Falls back to smart transcript parsing if the `claude` CLI is unavailable.
 
-### How it works
-
-```
-Session starts
-  │
-  ├── (work happens — full transcript is recorded)
-  │
-  ├── Context compaction triggered
-  │     └── PreCompact hook fires
-  │           → Reads session transcript (JSONL)
-  │           → Spawns claude -p --model sonnet to analyze
-  │           → Sonnet generates narrative summary + detects steers
-  │           → Calls write_worklog.py to persist worklog
-  │           → Calls write_preferences.py to log steers (log-only)
-  │           → Compaction proceeds
-  │
-  ├── (more work after compaction)
-  │
-  ├── User types /clear
-  │     └── UserPromptSubmit hook fires
-  │           → pre_clear_hook.sh checks if prompt is /clear
-  │           → If yes: same pipeline (transcript → Sonnet → persist)
-  │           → /clear executes after hook returns
-  │
-  └── Session ends (/exit, Ctrl+C, Ctrl+D)
-        └── SessionEnd hook fires
-              → Same process: read transcript → AI summary → persist
-```
-
-### Why a subagent, not mechanical analysis
-
-The transcript contains everything — user requests, Claude's reasoning, decisions, corrections, errors. Only an AI can extract the semantic meaning ("debugged X because Y") from raw conversation data. Mechanical tool-activity counting produces useless entries like "edited 3 files, ran 5 commands."
-
-### Fallback
-
-If the `claude` CLI is not available, the hook falls back to smart transcript parsing — extracting user requests as work items. This is better than nothing but less rich than the AI summary.
-
-## Automatic steer detection
-
-The hook also detects user steering patterns (steers) from the same transcript in the same Sonnet API call. Detected steers are logged via self-improve's `write_preferences.py --target log-only` to `~/Documents/AI/self-improve/preferences-log.md`.
-
-**Important:** Steers are NOT auto-applied to CLAUDE.md. Use the self-improve skill's manual flow to review and confirm detected steers before promoting them to active preferences.
+The same hook also detects user steering patterns and logs them via `write_preferences.py --target log-only` to `~/Documents/AI/self-improve/preferences-log.md`. Steers are NOT auto-applied to CLAUDE.md — use the self-improve skill to review and promote them.
 
 ## Integration with self-improve
 
