@@ -76,15 +76,29 @@ def generate_session_id() -> str:
 
 
 def write_entry(date_str, time_str, machine, session_id, project, summary,
-                tech=None, decisions=None, artifacts=None, open_items=None):
+                tech=None, decisions=None, artifacts=None, open_items=None,
+                trigger=None):
     worklog_dir = get_worklog_dir()
     filepath = worklog_dir / f"{date_str}-{machine}.md"
-    content = filepath.read_text(encoding="utf-8") if filepath.exists() else ""
+    try:
+        content = filepath.read_text(encoding="utf-8") if filepath.exists() else ""
+    except UnicodeDecodeError:
+        print(f"Warning: {filepath} has encoding issues, reading with replacement", file=sys.stderr)
+        content = filepath.read_text(encoding="utf-8", errors="replace") if filepath.exists() else ""
+
+    # Dedup: skip if this session_id already has an entry in today's file
+    # Skip dedup for sess-unknown since multiple unrelated entries can share it
+    if content and session_id and session_id != "sess-unknown" and f"`{session_id}`" in content:
+        print(f"Skipping duplicate entry for {session_id}", file=sys.stderr)
+        return filepath
 
     if not content:
         content = f"# Worklog — {date_str} ({machine})\n\n"
 
-    entry = f"### {time_str} — {project} `{session_id}`\n\n"
+    if trigger:
+        entry = f"### {time_str} — {project} `{session_id}` ({trigger})\n\n"
+    else:
+        entry = f"### {time_str} — {project} `{session_id}`\n\n"
     entry += "**Summary:**\n"
     for item in summary:
         entry += f"- {item}\n"
@@ -117,6 +131,7 @@ def main():
     parser.add_argument("--decisions", type=str)
     parser.add_argument("--artifacts", type=str)
     parser.add_argument("--open", type=str)
+    parser.add_argument("--trigger", type=str)
     parser.add_argument("--info", action="store_true")
 
     args = parser.parse_args()
@@ -153,7 +168,8 @@ def main():
             tech = [t.strip() for t in args.tech.split(",")]
 
     write_entry(date_str, time_str, machine, session_id, args.project or "general",
-                summary, tech, args.decisions, args.artifacts, args.open)
+                summary, tech, args.decisions, args.artifacts, args.open,
+                trigger=args.trigger)
 
 
 if __name__ == "__main__":
