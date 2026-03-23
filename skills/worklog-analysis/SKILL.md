@@ -35,7 +35,7 @@ Use the bundled script for all queries, or read files directly.
 **Trigger:** "standup", "what did I do yesterday", "daily update"
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --standup
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --standup
 ```
 
 Output format:
@@ -58,7 +58,7 @@ When presenting a standup, keep it tight — this is what the user will paste in
 **Trigger:** "weekly summary", "what did I do this week"
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --weekly
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --weekly
 ```
 
 Output format:
@@ -81,7 +81,7 @@ Output format:
 **Trigger:** "monthly review", "performance review", "what did I do last month"
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --monthly
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --monthly
 ```
 
 Output format:
@@ -111,9 +111,9 @@ The resume-ready bullets translate raw work into impact language. Quantify where
 **Trigger:** "what did I do on [date]", "show me [timeframe]"
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --query "2026-03-05"
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --query "this-week"
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --query "2026-03"  # whole month
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --query "2026-03-05"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --query "this-week"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --query "2026-03"  # whole month
 ```
 
 ### Session tracing
@@ -123,7 +123,7 @@ python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --query "2026-03"  # who
 When the user asks about a specific session, grep the worklog files for that session ID and reconstruct the full timeline of what happened in that session across all its log entries.
 
 ```bash
-python "${CLAUDE_SKILL_DIR}/scripts/analyze_worklog.py" --session "sess-f3a1"
+python "${CLAUDE_PLUGIN_ROOT}/scripts/analyze_worklog.py" --session "sess-f3a1"
 ```
 
 ## Session grouping

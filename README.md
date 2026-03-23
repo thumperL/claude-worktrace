@@ -12,36 +12,82 @@ Auto-captures your Claude Code sessions — what you did, what decisions you mad
 
 ## Install
 
-1. Download all three `.skill` files from the [latest release](../../releases/latest)
-2. Open Claude Code **in the directory where you downloaded them** and paste:
-
-```
-I have three .skill files to install: worklog-logging.skill, self-improve.skill, and worklog-analysis.skill.
-
-For each one:
-1. Read the INSTALL.md inside the zip to understand the steps
-2. Unzip into ~/.claude/skills/{skill-name}/
-3. Create required directories (~/Documents/AI/worklog, ~/Documents/AI/self-improve)
-4. Make shell scripts executable (chmod +x)
-5. Register hooks in ~/.claude/settings.json (merge, don't overwrite)
-6. Run the verification checks from INSTALL.md
-
-Start with worklog-logging (it has the hooks), then self-improve, then worklog-analysis.
+```bash
+claude plugins marketplace add github:thumperL/claude-worktrace
+claude plugins install claude-worktrace
 ```
 
-3. Claude will read each INSTALL.md and do everything. Verify it worked:
+The first command registers the repo as a plugin source. The second installs the plugin, which automatically registers hooks and loads skills.
+
+### Migrating from `.skill` zip install
+
+If you previously installed via `.skill` files, use the bundled migration script to safely remove old artifacts before installing the plugin.
+
+**Step 1: Preview what will be removed (dry run)**
 
 ```bash
-python3 ~/.claude/skills/worklog-logging/scripts/write_worklog.py --info
-python3 ~/.claude/skills/self-improve/scripts/write_preferences.py --show
-python3 ~/.claude/skills/worklog-analysis/scripts/analyze_worklog.py --info
+python3 scripts/migrate-from-skills.py --dry-run
 ```
+
+Review the output carefully. The script identifies:
+- Hook entries in `~/.claude/settings.json` that reference `worklog-logging/scripts/`
+- Skill directories at `~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}`
+
+Only claude-worktrace artifacts are targeted — other hooks and skills are left untouched.
+
+**Step 2: Run the migration**
+
+```bash
+python3 scripts/migrate-from-skills.py
+```
+
+The script backs up `settings.json` before modifying (saved as `settings.backup-*.json`).
+
+**Step 3: Install the plugin**
+
+```bash
+claude plugins install claude-worktrace
+```
+
+**Step 4: Verify in a new session**
+
+Start a fresh Claude Code session and confirm:
+- Skills load (try "standup" or "log this")
+- No duplicate skills in the skill list (each should appear once as `claude-worktrace:*`)
 
 ## Requirements
 
 - Claude Code CLI (`claude` in PATH)
 - Python 3.9+ (macOS system Python works)
 - `~/Documents/AI/` directory (iCloud sync recommended)
+
+## Project Structure
+
+```
+claude-worktrace/
+├── .claude-plugin/
+│   └── plugin.json
+├── skills/
+│   ├── worklog-logging/SKILL.md
+│   ├── worklog-analysis/SKILL.md
+│   └── self-improve/
+│       ├── SKILL.md
+│       └── references/pattern_categories.md
+├── agents/
+│   └── analyzer.md
+├── hooks/
+│   ├── hooks.json
+│   └── scripts/
+│       ├── pre_compact_hook.py
+│       ├── pre_clear_hook.sh
+│       └── session_end_wrapper.sh
+├── scripts/
+│   ├── write_worklog.py
+│   ├── write_preferences.py
+│   ├── analyze_worklog.py
+│   └── migrate-from-skills.py
+└── tests/test_python39_compat.py
+```
 
 ## Storage
 
@@ -66,4 +112,4 @@ python3 ~/.claude/skills/worklog-analysis/scripts/analyze_worklog.py --info
 git tag -a v0.3.0 -m "description" && git push origin v0.3.0
 ```
 
-GitHub Action validates Python 3.9 compatibility, packages each skill into a `.skill` zip, and attaches them to a release.
+GitHub Action validates Python 3.9 compatibility and creates a release.

@@ -1,4 +1,4 @@
-name: Package and Release Skills
+name: Validate and Release
 
 on:
   push:
@@ -26,18 +26,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Package skills
+      - name: Validate plugin manifests
         run: |
-          cd worklog-logging && zip -r ../worklog-logging.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
-          cd self-improve && zip -r ../self-improve.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
-          cd worklog-analysis && zip -r ../worklog-analysis.skill . -x '*.DS_Store' '__pycache__/*' '*.pyc' && cd ..
-          ls -lh *.skill
+          python3 -m json.tool .claude-plugin/plugin.json > /dev/null
+          python3 -m json.tool .claude-plugin/marketplace.json > /dev/null
+          python3 -m json.tool hooks/hooks.json > /dev/null
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            worklog-logging.skill
-            self-improve.skill
-            worklog-analysis.skill
           generate_release_notes: true

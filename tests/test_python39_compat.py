@@ -13,10 +13,10 @@ BAD_PATTERNS = re.compile(r'\b(list|dict|tuple|set)\[')
 
 
 def find_python_files():
-    """Find all .py files in skill directories."""
+    """Find all .py files in project source directories."""
     files = []
-    for skill in ("worklog-logging", "self-improve", "worklog-analysis"):
-        skill_dir = os.path.join(REPO_ROOT, skill)
+    for scan_dir in ("skills", "scripts", "hooks"):
+        skill_dir = os.path.join(REPO_ROOT, scan_dir)
         for root, _, filenames in os.walk(skill_dir):
             for f in filenames:
                 if f.endswith(".py"):

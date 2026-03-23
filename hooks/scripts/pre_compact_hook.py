@@ -320,13 +320,14 @@ def fallback_summary(messages):
 
 def write_worklog(project, result, event, session_id=None):
     """Persist the worklog entry directly (no subprocess)."""
-    script_dir = str(Path(__file__).parent)
+    script_dir = str(Path(__file__).resolve().parent.parent.parent / "scripts")
     if script_dir not in sys.path:
         sys.path.append(script_dir)
 
     try:
         from write_worklog import write_entry, get_hostname
-    except ImportError:
+    except ImportError as e:
+        print("[%s] Could not import write_worklog (path: %s): %s" % (event, script_dir, e), file=sys.stderr)
         return
 
     try:
@@ -350,8 +351,9 @@ def write_steers(steers, session_id, event, project="general", cwd=""):
     """Persist detected steers — dual-write to Claude native + standalone store."""
     if not steers:
         return
-    write_script = Path(__file__).parent.parent.parent / "self-improve" / "scripts" / "write_preferences.py"
+    write_script = Path(__file__).resolve().parent.parent.parent / "scripts" / "write_preferences.py"
     if not write_script.exists():
+        print("[%s] write_preferences.py not found at %s" % (event, write_script), file=sys.stderr)
         return
 
     session_ctx = "Auto-detected via %s hook (%s)" % (event, session_id or "unknown")

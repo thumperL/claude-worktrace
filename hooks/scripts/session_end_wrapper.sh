@@ -8,9 +8,14 @@
 # The stdin pipe closes when the session exits, so we MUST read it
 # before backgrounding.
 
-TMP=$(mktemp /tmp/worklog-hook.XXXXXX)
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    echo "ERROR: CLAUDE_PLUGIN_ROOT is not set" >&2
+    exit 1
+fi
+
+TMP=$(mktemp /tmp/worklog-hook.XXXXXX) || exit 1
 cat > "$TMP"
 
 # Run the hook in background, detached from the session process
-(python3 ~/.claude/skills/worklog-logging/scripts/pre_compact_hook.py < "$TMP"; rm -f "$TMP") &
+(python3 "${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_compact_hook.py" < "$TMP"; rm -f "$TMP") &
 disown
