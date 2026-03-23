@@ -10,6 +10,10 @@
     }],
     "SessionEnd": [{
       "hooks": [{ "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session_end_wrapper.sh" }]
+    }],
+    "PostToolUse": [{
+      "matcher": "Write",
+      "hooks": [{ "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/memory_write_hook.sh" }]
     }]
   }
 }

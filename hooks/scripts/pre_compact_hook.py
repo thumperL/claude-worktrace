@@ -52,8 +52,8 @@ def _save_state(state):
     try:
         with open(STATE_FILE, "w") as f:
             json.dump(state, f)
-    except OSError:
-        pass
+    except OSError as e:
+        print("[state] Could not save state file %s: %s" % (STATE_FILE, e), file=sys.stderr)
 
 
 def _transcript_key(path):
@@ -95,8 +95,8 @@ def parse_transcript(transcript_path, start_line=0):
                     if text and len(text.strip()) > 10:
                         messages.append(("assistant", text.strip()[:800]))
 
-    except (FileNotFoundError, PermissionError):
-        pass
+    except (FileNotFoundError, PermissionError) as e:
+        print("[transcript] Could not read %s: %s" % (transcript_path, e), file=sys.stderr)
 
     return messages, line_num
 
@@ -219,7 +219,10 @@ def condense_transcript(messages, max_chars=8000):
 
 
 def summarize_with_claude(condensed, project):
-    """Use claude CLI in print mode to generate a narrative summary."""
+    """Use claude CLI in print mode to generate a narrative summary.
+
+    Returns (result_dict, error_reason) — error_reason is None on success.
+    """
     prompt = (
         'You are analyzing a Claude Code session transcript to generate a worklog entry '
         'for the project "%s".\n\n'
@@ -258,67 +261,136 @@ def summarize_with_claude(condensed, project):
         '--- END TRANSCRIPT ---'
     ) % (project, condensed)
 
-    try:
-        result = subprocess.run(
-            ["claude", "-p", "--model", "sonnet"],
-            input=prompt,
-            capture_output=True,
-            text=True,
-            timeout=30
-        )
-        if result.returncode == 0 and result.stdout.strip():
-            output = result.stdout.strip()
-            # Find JSON object in output
-            json_match = re.search(r'\{[\s\S]*\}', output)
-            if json_match:
-                parsed = json.loads(json_match.group())
-                if "summary" in parsed and isinstance(parsed["summary"], list):
-                    # Reject junk summaries where Haiku couldn't extract real work
-                    junk_phrases = [
-                        "no session transcript",
-                        "no actionable session",
-                        "awaiting actual session",
-                        "awaiting complete session",
-                        "no transcript provided",
-                        "instructions without actual",
-                        "instructions repeated",
-                    ]
-                    first_bullet = (parsed["summary"][0] or "").lower() if parsed["summary"] else ""
-                    if any(phrase in first_bullet for phrase in junk_phrases):
-                        return None
-                    return parsed
-    except (subprocess.TimeoutExpired, FileNotFoundError, json.JSONDecodeError):
-        pass
-    except Exception:
-        pass
+    junk_phrases = [
+        "no session transcript",
+        "no actionable session",
+        "awaiting actual session",
+        "awaiting complete session",
+        "no transcript provided",
+        "instructions without actual",
+        "instructions repeated",
+    ]
 
-    return None
+    error_reason = None
+    max_attempts = 2
+
+    for attempt in range(max_attempts):
+        try:
+            result = subprocess.run(
+                ["claude", "-p", "--model", "sonnet"],
+                input=prompt,
+                capture_output=True,
+                text=True,
+                timeout=45
+            )
+            if result.returncode != 0:
+                error_reason = "claude -p exited %d: %s" % (
+                    result.returncode, (result.stderr or "").strip()[:200]
+                )
+                break
+
+            output = (result.stdout or "").strip()
+            if not output:
+                error_reason = "claude -p returned empty output"
+                break
+
+            json_match = re.search(r'\{[\s\S]*\}', output)
+            if not json_match:
+                error_reason = "no JSON found in response: %s" % output[:200]
+                break
+
+            try:
+                parsed = json.loads(json_match.group())
+            except json.JSONDecodeError:
+                error_reason = "could not parse response as JSON: %s" % output[:200]
+                if attempt < max_attempts - 1:
+                    continue
+                break
+
+            if "summary" not in parsed or not isinstance(parsed["summary"], list):
+                error_reason = "response missing 'summary' list: %s" % output[:200]
+                break
+
+            first_bullet = (parsed["summary"][0] or "").lower() if parsed["summary"] else ""
+            if any(phrase in first_bullet for phrase in junk_phrases):
+                error_reason = "AI produced junk summary (no real content)"
+                break
+
+            return (parsed, None)
+
+        except subprocess.TimeoutExpired:
+            error_reason = "claude -p timed out after 45s (attempt %d/%d)" % (
+                attempt + 1, max_attempts
+            )
+            if attempt < max_attempts - 1:
+                continue
+
+        except FileNotFoundError:
+            error_reason = "claude CLI not found in PATH"
+            break
+
+        except KeyboardInterrupt:
+            print("[summarize] Failed: user canceled session", file=sys.stderr)
+            raise
+
+        except Exception as e:
+            error_reason = "unexpected error: %s" % str(e)[:200]
+            break
+
+    print("[summarize] Failed: %s" % error_reason, file=sys.stderr)
+    return (None, error_reason)
 
 
 def fallback_summary(messages):
-    """Smart transcript-based summary when claude CLI is unavailable."""
+    """Smart transcript-based summary when AI summary is unavailable.
+
+    Returns a result dict with filtered topic bullets, or None if all
+    messages are system noise.
+    """
+    system_patterns = [
+        "WORKLOG", "hook_progress", "system-reminder",
+        "<command-message>", "<task-notification>",
+        "<command-name>", "[Request interrupted",
+    ]
     bullets = []
 
-    # Extract user requests — these ARE the work items
     for role, text in messages:
-        if role == "user" and len(text) > 20:
-            # Skip system messages
-            if any(skip in text for skip in ["WORKLOG", "hook_progress", "system-reminder"]):
-                continue
-            clean = text[:200].replace("\n", " ").strip()
-            if len(clean) > 150:
-                clean = clean[:147] + "..."
-            bullets.append("Worked on: %s" % clean)
-            if len(bullets) >= 7:
-                break
+        if role != "user" or len(text) <= 20:
+            continue
+
+        if any(pat in text for pat in system_patterns):
+            continue
+
+        # Skip messages that look like XML/system tags
+        stripped = text.strip()
+        if stripped.startswith("<") and ">" in stripped[:60]:
+            continue
+
+        # Skip messages where >50% is tag markup
+        tag_chars = sum(len(m) for m in re.findall(r'<[^>]+>', text))
+        if tag_chars > len(text) * 0.5:
+            continue
+
+        # Truncate to first sentence or ~80 chars
+        clean = text.replace("\n", " ").strip()
+        sentence_end = re.search(r'[.!?]\s', clean[:120])
+        if sentence_end and sentence_end.start() > 15:
+            clean = clean[:sentence_end.start() + 1]
+        elif len(clean) > 80:
+            cut = clean[:80].rfind(" ")
+            clean = clean[:cut] + "..." if cut > 30 else clean[:80] + "..."
+
+        bullets.append("Topics discussed: %s" % clean)
+        if len(bullets) >= 5:
+            break
 
     if not bullets:
-        bullets = ["Session work captured (install claude CLI for richer AI-generated summaries)"]
+        return None
 
     return {"summary": bullets, "decisions": "", "open": "", "steers": []}
 
 
-def write_worklog(project, result, event, session_id=None):
+def write_worklog(project, result, event, session_id=None, trigger=None):
     """Persist the worklog entry directly (no subprocess)."""
     script_dir = str(Path(__file__).resolve().parent.parent.parent / "scripts")
     if script_dir not in sys.path:
@@ -341,6 +413,7 @@ def write_worklog(project, result, event, session_id=None):
             summary=result["summary"],
             decisions=result.get("decisions"),
             open_items=result.get("open"),
+            trigger=trigger,
         )
         print("[%s] Worklog entry saved for project: %s" % (event, project))
     except Exception as e:
@@ -407,12 +480,22 @@ def main():
         _save_state(state)
         sys.exit(0)
 
-    # Try AI summary first, fall back to smart parsing
-    result = summarize_with_claude(condensed, project)
+    # Three-tier: AI summary → improved fallback → placeholder with error reason
+    result, error_reason = summarize_with_claude(condensed, project)
+
     if not result:
         result = fallback_summary(messages)
 
-    write_worklog(project, result, event, session_id=session_id)
+    if not result:
+        reason = "session contained no substantive user messages" if messages else (error_reason or "unknown failure")
+        result = {
+            "summary": ["AI summary unavailable — %s" % reason],
+            "decisions": "",
+            "open": "",
+            "steers": [],
+        }
+
+    write_worklog(project, result, event, session_id=session_id, trigger=event)
     steers = result.get("steers", [])
     write_steers(steers, session_id, event, project=project, cwd=cwd)
 
