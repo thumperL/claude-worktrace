@@ -65,22 +65,23 @@ def clean_hooks_from_settings(dry_run=False):
     Only touches hook entries whose command matches our fingerprints.
     Other hooks on the same event are preserved. Backs up before writing.
 
-    Returns list of descriptions of what was removed.
+    Returns (removed_list, had_error).
     """
     if not SETTINGS_FILE.exists():
         print("  %s not found — skipping." % SETTINGS_FILE)
-        return []
+        return [], False
 
     with open(SETTINGS_FILE, "r") as f:
         try:
             settings = json.load(f)
         except json.JSONDecodeError:
-            print("  ERROR: %s is not valid JSON — skipping." % SETTINGS_FILE)
-            return []
+            print("  ERROR: %s is not valid JSON — cannot inspect." % SETTINGS_FILE,
+                  file=sys.stderr)
+            return [], True
 
     hooks = settings.get("hooks")
     if not hooks or not isinstance(hooks, dict):
-        return []
+        return [], False
 
     removed = []
     events_to_delete = []
@@ -119,7 +120,7 @@ def clean_hooks_from_settings(dry_run=False):
         except OSError as e:
             print("  ERROR: Could not create backup: %s" % e, file=sys.stderr)
             print("  Aborting settings.json modification for safety.", file=sys.stderr)
-            return []
+            return [], True
         print("  Backup: %s" % backup)
 
         try:
@@ -129,9 +130,9 @@ def clean_hooks_from_settings(dry_run=False):
         except OSError as e:
             print("  ERROR: Failed to write %s: %s" % (SETTINGS_FILE, e), file=sys.stderr)
             print("  Restore from backup: %s" % backup, file=sys.stderr)
-            return []
+            return [], True
 
-    return removed
+    return removed, False
 
 
 def clean_skill_directories(dry_run=False):
@@ -189,7 +190,9 @@ def main():
 
     # --- Hooks ---
     print("Checking %s for old hooks..." % SETTINGS_FILE)
-    removed_hooks = clean_hooks_from_settings(args.dry_run)
+    removed_hooks, hook_errors = clean_hooks_from_settings(args.dry_run)
+    if hook_errors:
+        errors = True
     if removed_hooks:
         found_anything = True
         for desc in removed_hooks:

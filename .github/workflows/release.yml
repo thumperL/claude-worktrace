@@ -26,8 +26,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Validate plugin manifest
-        run: python3 -m json.tool .claude-plugin/plugin.json > /dev/null
+      - name: Validate plugin manifests
+        run: |
+          python3 -m json.tool .claude-plugin/plugin.json > /dev/null
+          python3 -m json.tool .claude-plugin/marketplace.json > /dev/null
+          python3 -m json.tool hooks/hooks.json > /dev/null
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
