@@ -55,6 +55,18 @@ Start a fresh Claude Code session and confirm:
 - Skills load (try "standup" or "log this")
 - No duplicate skills in the skill list (each should appear once as `claude-worktrace:*`)
 
+## Platform Compatibility
+
+| Feature | CLI | Desktop / Cowork |
+|---------|-----|-------------------|
+| Worklog auto-capture (hooks) | Auto on compaction, `/clear`, session end | Not available (no hooks) |
+| Worklog manual logging (skill) | Via Bash + `write_worklog.py` | Via Read/Write/Edit (text-only fallback) |
+| Worklog manual logging (shell) | `scripts/manual_worklog.sh` | Not available (no Bash) |
+| Self-improve (steer detection) | Subagent analysis | Direct analysis (conservative, no Agent tool) |
+| Self-improve (persistence) | Via Bash + `write_preferences.py` | Via Write/Edit to `~/.claude/CLAUDE.md` |
+| Worklog analysis (standups, summaries) | Full | Full |
+| Auto-detected steer logging (hooks) | Auto on compaction/session end | Not available (no hooks) |
+
 ## Requirements
 
 - Claude Code CLI (`claude` in PATH)
@@ -85,6 +97,7 @@ claude-worktrace/
 │   ├── write_worklog.py
 │   ├── write_preferences.py
 │   ├── analyze_worklog.py
+│   ├── manual_worklog.sh
 │   └── migrate-from-skills.py
 └── tests/test_python39_compat.py
 ```
