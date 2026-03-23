@@ -15,7 +15,6 @@ Usage:
 
 import argparse
 import json
-import os
 import shutil
 import sys
 from datetime import datetime
@@ -115,12 +114,22 @@ def clean_hooks_from_settings(dry_run=False):
         backup = SETTINGS_FILE.with_suffix(
             ".backup-%s.json" % datetime.now().strftime("%Y%m%d-%H%M%S")
         )
-        shutil.copy2(SETTINGS_FILE, backup)
+        try:
+            shutil.copy2(SETTINGS_FILE, backup)
+        except OSError as e:
+            print("  ERROR: Could not create backup: %s" % e, file=sys.stderr)
+            print("  Aborting settings.json modification for safety.", file=sys.stderr)
+            return []
         print("  Backup: %s" % backup)
 
-        with open(SETTINGS_FILE, "w") as f:
-            json.dump(settings, f, indent=2)
-            f.write("\n")
+        try:
+            with open(SETTINGS_FILE, "w") as f:
+                json.dump(settings, f, indent=2)
+                f.write("\n")
+        except OSError as e:
+            print("  ERROR: Failed to write %s: %s" % (SETTINGS_FILE, e), file=sys.stderr)
+            print("  Restore from backup: %s" % backup, file=sys.stderr)
+            return []
 
     return removed
 
@@ -154,7 +163,12 @@ def clean_skill_directories(dry_run=False):
 
         removed.append(str(skill_dir))
         if not dry_run:
-            shutil.rmtree(skill_dir)
+            try:
+                shutil.rmtree(skill_dir)
+            except OSError as e:
+                print("  ERROR: Could not remove %s/: %s" % (skill_dir, e), file=sys.stderr)
+                removed.pop()  # don't count as removed
+                continue
 
     return removed
 
@@ -171,6 +185,7 @@ def main():
 
     prefix = "[DRY RUN] " if args.dry_run else ""
     found_anything = False
+    errors = False
 
     # --- Hooks ---
     print("Checking %s for old hooks..." % SETTINGS_FILE)
@@ -198,7 +213,10 @@ def main():
 
     # --- Summary ---
     print()
-    if not found_anything:
+    if errors:
+        print("Migration completed with errors. Check messages above.")
+        return 1
+    elif not found_anything:
         print("Already clean — nothing to migrate.")
         return 0
     elif args.dry_run:

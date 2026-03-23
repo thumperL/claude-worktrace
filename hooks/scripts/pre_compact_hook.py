@@ -326,7 +326,8 @@ def write_worklog(project, result, event, session_id=None):
 
     try:
         from write_worklog import write_entry, get_hostname
-    except ImportError:
+    except ImportError as e:
+        print("[%s] Could not import write_worklog (path: %s): %s" % (event, script_dir, e), file=sys.stderr)
         return
 
     try:
@@ -352,6 +353,7 @@ def write_steers(steers, session_id, event, project="general", cwd=""):
         return
     write_script = Path(__file__).resolve().parent.parent.parent / "scripts" / "write_preferences.py"
     if not write_script.exists():
+        print("[%s] write_preferences.py not found at %s" % (event, write_script), file=sys.stderr)
         return
 
     session_ctx = "Auto-detected via %s hook (%s)" % (event, session_id or "unknown")

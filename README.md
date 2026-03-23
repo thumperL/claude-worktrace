@@ -13,10 +13,11 @@ Auto-captures your Claude Code sessions — what you did, what decisions you mad
 ## Install
 
 ```bash
-claude plugins add github:thumperL/claude-worktrace
+claude plugins marketplace add github:thumperL/claude-worktrace
+claude plugins install claude-worktrace
 ```
 
-That's it. The plugin registers hooks and skills automatically.
+The first command registers the repo as a plugin source. The second installs the plugin, which automatically registers hooks and loads skills.
 
 ### Migrating from `.skill` zip install
 
@@ -83,7 +84,8 @@ claude-worktrace/
 ├── scripts/
 │   ├── write_worklog.py
 │   ├── write_preferences.py
-│   └── analyze_worklog.py
+│   ├── analyze_worklog.py
+│   └── migrate-from-skills.py
 └── tests/test_python39_compat.py
 ```
 

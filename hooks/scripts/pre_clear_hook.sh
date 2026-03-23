@@ -4,6 +4,11 @@
 # UserPromptSubmit fires for every prompt. We only care about /clear.
 # Uses bash string matching (fast) instead of spawning python3 (slow).
 
+if [ -z "${CLAUDE_PLUGIN_ROOT:-}" ]; then
+    echo "ERROR: CLAUDE_PLUGIN_ROOT is not set" >&2
+    exit 1
+fi
+
 INPUT=$(cat)
 
 # Match prompt value starting with /clear — avoids false positives from
