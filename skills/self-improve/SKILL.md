@@ -5,12 +5,13 @@ description: >
   TRIGGER THIS SKILL when any of the following occur during a session:
   (1) The user corrects Claude's approach 3 or more times (e.g., "no, do X instead", "that's not what I meant",
   "actually...", rephrasing the same request, asking to redo work, expressing dissatisfaction).
-  (2) Context usage is high (85%+) and the conversation has been productive — capture what worked before compacting.
+  (2) Context usage is high (50%+) and the conversation has been productive — capture what worked before compacting.
   (3) The user explicitly says "learn this", "remember this preference", "improve how you work with me",
   or similar self-improvement triggers.
   Also trigger when Claude notices repeated patterns of correction across a conversation, even before hitting
   the 3-correction threshold, if the pattern is clear. This skill is about making Claude better at working
   with this specific user over time. Use it liberally — it's better to learn too often than to miss patterns.
+  Works in CLI, Cowork, and Desktop chat.
 ---
 
 # Self-Improve: Adaptive Interaction Learning
@@ -40,9 +41,9 @@ A "steer" is ANY input where the user shapes HOW you work. The bar is intentiona
 
 Key insight: if the user is telling you HOW to do something (not just WHAT), that's a steer.
 
-### Trigger 2: High context (85%+)
+### Trigger 2: High context (50%+)
 
-Before compacting, analyze the full conversation. This is your last chance to extract learnings.
+Before compacting, analyze the full conversation. This is your last chance to extract learnings. The 50% threshold accounts for large context windows (1M tokens) where useful patterns emerge well before exhaustion.
 
 ### Trigger 3: Explicit request
 
@@ -75,6 +76,14 @@ Return your analysis as JSON following the format in the analyzer instructions."
 ```
 
 The subagent returns structured JSON with steers found, patterns identified, and any conflicts.
+
+### Step 1b: No-Agent fallback (Desktop / Cowork)
+
+When the Agent tool is unavailable (Desktop chat, Cowork), analyze the conversation directly instead of spawning a subagent. Be conservative — without a fresh-eyes subagent, you are more likely to have blind spots:
+
+- Only flag steers with clear, explicit user corrections (not ambiguous signals)
+- Require at least 2 pieces of evidence before flagging a pattern
+- When in doubt, log the steer as low-confidence rather than skipping it
 
 ### Step 2: Review the subagent's findings
 
@@ -118,7 +127,10 @@ The script handles:
 - Writing to `~/Documents/AI/self-improve/preferences-log.md` (detailed log with timestamps, synced across devices)
 - Deduplication (won't add preferences that already exist)
 
-If the script isn't available, write directly to `~/.claude/CLAUDE.md` under a `## User Preferences (Auto-Learned)` section.
+If the script isn't available, or Bash is unavailable (Desktop/Cowork), write directly to `~/.claude/CLAUDE.md` under a `## User Preferences (Auto-Learned)` section using the Write or Edit tool. Format each preference as:
+```
+- [preference summary] (when: [context/evidence])
+```
 
 ### Step 5: Trigger worklog
 
