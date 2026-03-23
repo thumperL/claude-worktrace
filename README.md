@@ -20,11 +20,39 @@ That's it. The plugin registers hooks and skills automatically.
 
 ### Migrating from `.skill` zip install
 
-If you previously installed via `.skill` files:
+If you previously installed via `.skill` files, use the bundled migration script to safely remove old artifacts before installing the plugin.
 
-1. Remove manual hooks from `~/.claude/settings.json` (the `PreCompact`, `UserPromptSubmit`, and `SessionEnd` entries pointing to `~/.claude/skills/worklog-logging/`)
-2. Remove the old skill directories: `rm -rf ~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}`
-3. Install the plugin: `claude plugins add github:thumperL/claude-worktrace`
+**Step 1: Preview what will be removed (dry run)**
+
+```bash
+python3 scripts/migrate-from-skills.py --dry-run
+```
+
+Review the output carefully. The script identifies:
+- Hook entries in `~/.claude/settings.json` that reference `worklog-logging/scripts/`
+- Skill directories at `~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}`
+
+Only claude-worktrace artifacts are targeted — other hooks and skills are left untouched.
+
+**Step 2: Run the migration**
+
+```bash
+python3 scripts/migrate-from-skills.py
+```
+
+The script backs up `settings.json` before modifying (saved as `settings.backup-*.json`).
+
+**Step 3: Install the plugin**
+
+```bash
+claude plugins install claude-worktrace
+```
+
+**Step 4: Verify in a new session**
+
+Start a fresh Claude Code session and confirm:
+- Skills load (try "standup" or "log this")
+- No duplicate skills in the skill list (each should appear once as `claude-worktrace:*`)
 
 ## Requirements
 
