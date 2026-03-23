@@ -13,7 +13,7 @@ Auto-captures your Claude Code sessions — what you did, what decisions you mad
 ## Install
 
 ```bash
-claude plugins marketplace add github:thumperL/claude-worktrace
+claude plugins marketplace add https://github.com/thumperL/claude-worktrace
 claude plugins install claude-worktrace
 ```
 
