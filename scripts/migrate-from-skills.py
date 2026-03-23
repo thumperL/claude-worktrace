@@ -24,12 +24,13 @@ CLAUDE_DIR = Path.home() / ".claude"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
 SKILLS_DIR = CLAUDE_DIR / "skills"
 
-# Exact path fragments from the old INSTALL.md hook commands.
+# Exact path fragments from old hook commands.
 # A hook is ours if and only if its command contains one of these.
 OUR_HOOK_FINGERPRINTS = (
     "worklog-logging/scripts/pre_compact_hook.py",
     "worklog-logging/scripts/pre_clear_hook.sh",
     "worklog-logging/scripts/session_end_wrapper.sh",
+    "worklog-logging/scripts/post_tool_use_logger.py",
 )
 
 # Old skill directories and a file that MUST exist to confirm it's ours.
