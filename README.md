@@ -108,8 +108,6 @@ claude-worktrace/
 
 ## Releasing
 
-```bash
-git tag -a v0.3.0 -m "description" && git push origin v0.3.0
-```
-
-GitHub Action validates Python 3.9 compatibility and creates a release.
+1. Open PR to `main` and add a label: `release:patch`, `release:minor`, or `release:major`
+2. On merge, auto-tag workflow bumps the version in `plugin.json` + `marketplace.json`, commits, and tags
+3. Release workflow validates and publishes the GitHub release
