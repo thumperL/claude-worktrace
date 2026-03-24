@@ -108,8 +108,7 @@ claude-worktrace/
 
 ## Releasing
 
-```bash
-git tag -a v0.3.0 -m "description" && git push origin v0.3.0
-```
-
-GitHub Action validates Python 3.9 compatibility and creates a release.
+1. Create a `release/vX.Y.Z` branch, bump version in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
+2. Merge to `main` via PR
+3. Auto-tag workflow creates the git tag from `plugin.json`
+4. Release workflow validates and publishes the GitHub release
