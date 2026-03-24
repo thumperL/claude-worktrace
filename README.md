@@ -108,7 +108,6 @@ claude-worktrace/
 
 ## Releasing
 
-1. Create a `release/vX.Y.Z` branch, bump version in `.claude-plugin/plugin.json` and `.claude-plugin/marketplace.json`
-2. Merge to `main` via PR
-3. Auto-tag workflow creates the git tag from `plugin.json`
-4. Release workflow validates and publishes the GitHub release
+1. Open PR to `main` and add a label: `release:patch`, `release:minor`, or `release:major`
+2. On merge, auto-tag workflow bumps the version in `plugin.json` + `marketplace.json`, commits, and tags
+3. Release workflow validates and publishes the GitHub release
