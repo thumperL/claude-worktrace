@@ -5,12 +5,15 @@ description: >
   TRIGGER THIS SKILL when any of the following occur during a session:
   (1) The user corrects Claude's approach 3 or more times (e.g., "no, do X instead", "that's not what I meant",
   "actually...", rephrasing the same request, asking to redo work, expressing dissatisfaction).
-  (2) Context usage is high (85%+) and the conversation has been productive — capture what worked before compacting.
+  (2) At periodic context checkpoints (~25%, ~50%, ~75%) — this is routine logging, not a signal to stop.
+  Capture learnings silently and continue working on the current task without interruption.
   (3) The user explicitly says "learn this", "remember this preference", "improve how you work with me",
   or similar self-improvement triggers.
   Also trigger when Claude notices repeated patterns of correction across a conversation, even before hitting
   the 3-correction threshold, if the pattern is clear. This skill is about making Claude better at working
   with this specific user over time. Use it liberally — it's better to learn too often than to miss patterns.
+  IMPORTANT: This skill is about capturing learnings, NOT about managing context. Never suggest ending
+  the session, starting fresh, or doing a handoff. After logging, resume the task seamlessly.
 ---
 
 # Self-Improve: Adaptive Interaction Learning
@@ -40,15 +43,46 @@ A "steer" is ANY input where the user shapes HOW you work. The bar is intentiona
 
 Key insight: if the user is telling you HOW to do something (not just WHAT), that's a steer.
 
-### Trigger 2: High context (85%+)
+### Trigger 2: Periodic context checkpoints (~25%, ~50%, ~75%)
 
-Before compacting, analyze the full conversation. This is your last chance to extract learnings.
+At each checkpoint, capture any learnings accumulated since the last checkpoint. This is routine periodic logging — NOT a signal that context is running out. After capturing, **resume the current task immediately without comment**. Do not suggest compacting, ending the session, or starting fresh.
 
 ### Trigger 3: Explicit request
 
 "Learn this", "remember this", "always do it this way", "improve yourself".
 
-## The Analysis Process
+## Checkpoint mode vs. interactive mode
+
+**Checkpoint triggers (~25/50/75% context):**
+1. Spawn the analyzer subagent to detect patterns
+2. Auto-save worklog silently (worklog doesn't need confirmation)
+3. **If no patterns worth noting** — skip entirely, resume task without interrupting the user
+4. **If patterns were found**, present them with options:
+
+```
+📋 Checkpoint — patterns detected:
+
+1. **[Category]**: [Preference summary]
+   Evidence: "[Brief quote]"
+
+2. **[Category]**: [Preference summary]
+   Evidence: "[Brief quote]"
+
+Options:
+[1] Save these
+[2] Skip, save nothing
+[3] Let me edit/add my own
+```
+
+On [1]: persist via `write_preferences.py --target log-only` (logged, not auto-applied to CLAUDE.md)
+On [2]: discard and continue
+On [3]: accept user input, then persist
+
+After the user responds, **immediately resume the current task**.
+
+**All other triggers** (steer count ≥ 3, explicit request) use the full interactive flow below, which can write directly to CLAUDE.md on confirmation.
+
+## The Analysis Process (interactive mode)
 
 ### Step 1: Delegate to a subagent
 
@@ -124,11 +158,9 @@ If the script isn't available, write directly to `~/.claude/CLAUDE.md` under a `
 
 After saving preferences, also trigger the **worklog-logging** skill to capture what was accomplished. Present both outputs together for a single confirmation.
 
-### Step 6: Suggest compacting
+### Step 6: Resume work
 
-If context is high:
-
-"Preferences and worklog saved. Context is getting high — should I compact now? Everything is persisted and will carry over."
+After logging, **immediately continue with the current task**. Do not suggest compacting, ending the session, starting fresh, or doing a handoff. The purpose of periodic logging is to capture learnings incrementally — it is not a stopping point.
 
 ## Handling conflicts
 
