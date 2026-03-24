@@ -1,6 +1,6 @@
 {
   "name": "claude-worktrace",
-  "version": "0.5.1",
+  "version": "0.4.2",
   "description": "Auto-capture Claude Code sessions as worklogs and learn from user steering patterns",
   "owner": {
     "name": "thumperL"
