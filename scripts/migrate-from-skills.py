@@ -4,7 +4,9 @@ migrate-from-skills.py — Remove old .skill-based installation artifacts.
 
 Safely removes ONLY claude-worktrace artifacts:
   - Hook entries in ~/.claude/settings.json that reference our scripts
-  - Skill directories at ~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}
+  - Skill directories named {worklog-logging,self-improve,worklog-analysis}
+    under ~/.claude/skills/ and ~/.claude/commands/
+  - The matching .skill zip bundles sitting beside those directories
 
 Safe to run multiple times. Creates a backup of settings.json before modifying.
 
@@ -17,12 +19,16 @@ import argparse
 import json
 import shutil
 import sys
+import zipfile
 from datetime import datetime
 from pathlib import Path
 
 CLAUDE_DIR = Path.home() / ".claude"
 SETTINGS_FILE = CLAUDE_DIR / "settings.json"
-SKILLS_DIR = CLAUDE_DIR / "skills"
+
+# Later .skill installs unpacked under skills/; earlier ones used commands/.
+# Both layouts are identical otherwise, so scan each root.
+LEGACY_DIRS = (CLAUDE_DIR / "skills", CLAUDE_DIR / "commands")
 
 # Exact path fragments from old hook commands.
 # A hook is ours if and only if its command contains one of these.
@@ -136,41 +142,62 @@ def clean_hooks_from_settings(dry_run=False):
     return removed, False
 
 
-def clean_skill_directories(dry_run=False):
-    """Remove old skill directories that are positively identified as ours.
+def _bundle_is_ours(bundle_path, secondary_marker):
+    """Check a .skill zip's contents match our layout before removing it."""
+    try:
+        with zipfile.ZipFile(bundle_path) as bundle:
+            names = bundle.namelist()
+    except (zipfile.BadZipFile, OSError):
+        return False
+    return "SKILL.md" in names and secondary_marker in names
 
-    Checks both the directory name and marker files before removing.
-    Returns list of removed directory paths.
+
+def clean_skill_artifacts(dry_run=False):
+    """Remove old skill directories and .skill bundles identified as ours.
+
+    Scans every legacy root. Checks marker files inside each directory, and
+    inside each zip bundle, before removing.
+    Returns list of removed paths.
     """
-    if not SKILLS_DIR.exists():
-        print("  %s not found — skipping." % SKILLS_DIR)
-        return []
-
     removed = []
 
-    for skill_name, primary_marker in OLD_SKILLS.items():
-        skill_dir = SKILLS_DIR / skill_name
-        if not skill_dir.is_dir():
+    for root in LEGACY_DIRS:
+        if not root.exists():
+            print("  %s not found — skipping." % root)
             continue
 
-        primary = skill_dir / primary_marker
-        if not primary.exists():
-            continue
+        for skill_name, primary_marker in OLD_SKILLS.items():
+            secondary_marker = SECONDARY_MARKERS[skill_name]
+            skill_dir = root / skill_name
 
-        secondary = skill_dir / SECONDARY_MARKERS[skill_name]
-        if not secondary.exists():
-            print("  SKIP: %s/ has SKILL.md but missing %s — may not be ours" % (
-                skill_dir, SECONDARY_MARKERS[skill_name]))
-            continue
+            if skill_dir.is_dir() and (skill_dir / primary_marker).exists():
+                if (skill_dir / secondary_marker).exists():
+                    removed.append("%s/" % skill_dir)
+                    if not dry_run:
+                        try:
+                            shutil.rmtree(skill_dir)
+                        except OSError as e:
+                            print("  ERROR: Could not remove %s/: %s" % (skill_dir, e),
+                                  file=sys.stderr)
+                            removed.pop()  # don't count as removed
+                else:
+                    print("  SKIP: %s/ has %s but missing %s — may not be ours" % (
+                        skill_dir, primary_marker, secondary_marker))
 
-        removed.append(str(skill_dir))
-        if not dry_run:
-            try:
-                shutil.rmtree(skill_dir)
-            except OSError as e:
-                print("  ERROR: Could not remove %s/: %s" % (skill_dir, e), file=sys.stderr)
-                removed.pop()  # don't count as removed
-                continue
+            bundle = root / ("%s.skill" % skill_name)
+            if bundle.is_file():
+                if _bundle_is_ours(bundle, secondary_marker):
+                    removed.append(str(bundle))
+                    if not dry_run:
+                        try:
+                            bundle.unlink()
+                        except OSError as e:
+                            print("  ERROR: Could not remove %s: %s" % (bundle, e),
+                                  file=sys.stderr)
+                            removed.pop()  # don't count as removed
+                else:
+                    print("  SKIP: %s does not contain %s — may not be ours" % (
+                        bundle, secondary_marker))
 
     return removed
 
@@ -203,17 +230,18 @@ def main():
     else:
         print("  No old hooks found.")
 
-    # --- Skill directories ---
-    print("\nChecking %s/ for old skill directories..." % SKILLS_DIR)
-    removed_dirs = clean_skill_directories(args.dry_run)
-    if removed_dirs:
+    # --- Skill directories and bundles ---
+    print("\nChecking %s for old skill artifacts..." %
+          " and ".join("%s/" % d for d in LEGACY_DIRS))
+    removed_artifacts = clean_skill_artifacts(args.dry_run)
+    if removed_artifacts:
         found_anything = True
-        for d in removed_dirs:
-            print("  %sRemove: %s/" % (prefix, d))
+        for path in removed_artifacts:
+            print("  %sRemove: %s" % (prefix, path))
         if not args.dry_run:
             print("  Done.")
     else:
-        print("  No old skill directories found.")
+        print("  No old skill artifacts found.")
 
     # --- Summary ---
     print()

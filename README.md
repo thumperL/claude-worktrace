@@ -31,9 +31,13 @@ python3 scripts/migrate-from-skills.py --dry-run
 
 Review the output carefully. The script identifies:
 - Hook entries in `~/.claude/settings.json` that reference `worklog-logging/scripts/`
-- Skill directories at `~/.claude/skills/{worklog-logging,self-improve,worklog-analysis}`
+- Skill directories named `{worklog-logging,self-improve,worklog-analysis}` under both
+  `~/.claude/skills/` and `~/.claude/commands/` — earlier installs used `commands/`
+- The matching `.skill` zip bundles sitting beside those directories
 
-Only claude-worktrace artifacts are targeted — other hooks and skills are left untouched.
+Only claude-worktrace artifacts are targeted — other hooks, skills and commands are left
+untouched. A directory is removed only when its marker files match, and a `.skill` bundle
+only when its zip contents match.
 
 **Step 2: Run the migration**
 
