@@ -29,6 +29,8 @@ from pathlib import Path
 STATE_DIR = Path(os.environ.get("TMPDIR", "/tmp"))
 STATE_FILE = STATE_DIR / "worklog-hook-state.json"
 
+PLUGIN_ROOT = Path(__file__).resolve().parent.parent.parent
+
 
 def read_stdin():
     """Read hook JSON input from stdin."""
@@ -194,6 +196,37 @@ def detect_project(cwd):
     return "general"
 
 
+def detect_friction(transcript_path):
+    """Tool-level friction the message text cannot show.
+
+    The summariser reads prose, so a command that failed four times before it
+    worked is invisible to it: nobody narrates their own retries. The detectors
+    read the tool calls, which is where that lives.
+
+    Best effort in every direction. A worklog entry is worth more than a
+    complete one, so any failure here returns nothing rather than raising.
+    """
+    try:
+        sys.path.insert(0, str(PLUGIN_ROOT / "scripts"))
+        from lib import detectors as detectors_lib
+        from lib import transcript as transcript_lib
+
+        session = transcript_lib.parse_transcript(transcript_path)
+        events = (detectors_lib.detect_failed_retry(session)
+                  + detectors_lib.detect_rediscovery(session))
+    except Exception:
+        return []
+
+    lines = []
+    for event in sorted(events, key=lambda e: -(e.get("cost_calls") or 0))[:6]:
+        if event["kind"] == "failed_retry":
+            lines.append("%s failed and had to be run again (%d call(s) to recover)"
+                         % (event["key"], event.get("cost_calls") or 1))
+        else:
+            lines.append("looked up %s" % event["key"])
+    return lines
+
+
 def condense_transcript(messages, max_chars=8000):
     """Condense messages to fit within a reasonable prompt size."""
     condensed = []
@@ -218,7 +251,7 @@ def condense_transcript(messages, max_chars=8000):
     return "\n\n".join(condensed)
 
 
-def summarize_with_claude(condensed, project):
+def summarize_with_claude(condensed, project, friction=None):
     """Use claude CLI in print mode to generate a narrative summary.
 
     Returns (result_dict, error_reason) — error_reason is None on success.
@@ -259,7 +292,8 @@ def summarize_with_claude(condensed, project):
         '--- SESSION TRANSCRIPT ---\n'
         '%s\n'
         '--- END TRANSCRIPT ---'
-    ) % (project, condensed)
+        '%s'
+    ) % (project, condensed, _friction_section(friction))
 
     junk_phrases = [
         "no session transcript",
@@ -339,6 +373,23 @@ def summarize_with_claude(condensed, project):
 
     print("[summarize] Failed: %s" % error_reason, file=sys.stderr)
     return (None, error_reason)
+
+
+def _friction_section(friction):
+    """Appended after the transcript, and explicitly marked as a different source.
+
+    Told not to invent a narrative from it: these are observations, and most
+    sessions have a few that are not worth a bullet.
+    """
+    if not friction:
+        return ""
+    return (
+        "\n\n--- FRICTION OBSERVED ---\n"
+        "Derived from the tool calls rather than the messages above, so it is not\n"
+        "visible in the transcript. Mention only what genuinely shaped the session;\n"
+        "a single retry is noise. Do not pad the summary with these.\n"
+        + "\n".join("- %s" % line for line in friction)
+    )
 
 
 def fallback_summary(messages):
@@ -481,7 +532,8 @@ def main():
         sys.exit(0)
 
     # Three-tier: AI summary → improved fallback → placeholder with error reason
-    result, error_reason = summarize_with_claude(condensed, project)
+    friction = detect_friction(transcript_path)
+    result, error_reason = summarize_with_claude(condensed, project, friction=friction)
 
     if not result:
         result = fallback_summary(messages)

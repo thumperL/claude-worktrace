@@ -1,8 +1,10 @@
 {
-  "description": "Auto-capture worklogs and detect user steering patterns",
+  "description": "Auto-capture worklogs, detect user steering patterns, and suggest setup retros",
   "hooks": {
     "PreCompact": [{
       "hooks": [{ "type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/pre_compact_hook.py" }]
+    }, {
+      "hooks": [{ "type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/ledger_hook.py" }]
     }],
     "UserPromptSubmit": [{
       "matcher": "",
@@ -10,6 +12,8 @@
     }],
     "SessionEnd": [{
       "hooks": [{ "type": "command", "command": "bash ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/session_end_wrapper.sh" }]
+    }, {
+      "hooks": [{ "type": "command", "command": "python3 ${CLAUDE_PLUGIN_ROOT}/hooks/scripts/ledger_hook.py" }]
     }],
     "PostToolUse": [{
       "matcher": "Write",

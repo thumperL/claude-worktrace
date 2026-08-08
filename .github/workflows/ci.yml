@@ -20,3 +20,15 @@ jobs:
         run: |
           python3 --version
           python3 tests/test_python39_compat.py
+
+      - name: Transcript parser unit tests
+        run: python3 tests/test_transcript_parser.py
+
+      - name: Ledger hook unit tests
+        run: python3 tests/test_ledger_hook.py
+
+      - name: Safety classifier unit tests
+        run: python3 tests/test_safety.py
+
+      - name: Friction ledger unit tests
+        run: python3 tests/test_ledger.py

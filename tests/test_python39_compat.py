@@ -11,11 +11,15 @@ REPO_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Patterns that crash on Python 3.9 at import time
 BAD_PATTERNS = re.compile(r'\b(list|dict|tuple|set)\[')
 
+# `X | None` annotations compile on 3.9 but raise TypeError when the def runs,
+# so py_compile alone will not catch them.
+UNION_PATTERN = re.compile(r'(->|:)\s*[A-Za-z_][\w.]*(\[[^\]]*\])?\s*\|\s*[A-Za-z_]')
+
 
 def find_python_files():
     """Find all .py files in project source directories."""
     files = []
-    for scan_dir in ("skills", "scripts", "hooks"):
+    for scan_dir in ("skills", "scripts", "hooks", "tests"):
         skill_dir = os.path.join(REPO_ROOT, scan_dir)
         for root, _, filenames in os.walk(skill_dir):
             for f in filenames:
@@ -44,6 +48,8 @@ def test_no_310_types():
                 # Only check function signatures (def lines, param annotations, return types)
                 if line.strip().startswith("def ") or "->" in line:
                     matches = BAD_PATTERNS.findall(line)
+                    if UNION_PATTERN.search(line):
+                        matches = matches + ["X | Y union"]
                     if matches:
                         failures.append((path, i, line.strip(), matches))
     return failures
