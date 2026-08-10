@@ -312,11 +312,44 @@ def write_to_prefs_log(preferences, session_context=""):
             entry += "  - Evidence: \"%s\"\n" % pref["evidence"]
         confidence = pref.get("confidence", "medium")
         entry += "  - Confidence: %s\n" % confidence
+        if pref.get("rows"):
+            entry += "  - Ledger rows: %s\n" % ", ".join(pref["rows"])
     entry += "\n---\n\n"
 
     content += entry
     PREFS_LOG.write_text(content, encoding="utf-8")
     print("Logged %d preferences to %s" % (len(preferences), PREFS_LOG))
+
+
+def stamp_ledger_rows(preferences, cwd, applied_at):
+    """Mark the ledger rows a preference was saved from as resolved.
+
+    This is what makes the preference checkable later: the rows keep accruing,
+    so a preference whose rows go quiet worked, and one whose rows keep arriving
+    did not. Best effort by design -- a missing ledger must never stop a
+    preference being saved.
+    """
+    row_ids = []
+    for pref in preferences:
+        row_ids.extend(pref.get("rows") or [])
+    if not row_ids:
+        return
+
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    try:
+        from lib import ledger as ledger_lib
+    except ImportError:
+        return
+
+    path = ledger_lib.ledger_path(cwd or os.getcwd())
+    ledger = ledger_lib.Ledger.load(path)
+    stamped = 0
+    for row_id in row_ids:
+        if ledger.resolve(row_id, "claude_md", applied_at) is not None:
+            stamped += 1
+    if stamped:
+        ledger.save(path)
+        print("Stamped %d ledger row(s) as applied" % stamped)
 
 
 # --- Display / Remove ---
@@ -397,6 +430,8 @@ def main():
                         help="Project cwd (for --target project, used to find Claude memory dir)")
     parser.add_argument("--session-context", type=str, default="",
                         help="Brief description of the session for the log entry")
+    parser.add_argument("--cwd", type=str, default="",
+                        help="Project dir, so ledger rows can be stamped as resolved")
     parser.add_argument("--show", action="store_true", help="Show current preferences")
     parser.add_argument("--remove", type=str, help="Remove preferences matching this term")
 
@@ -455,6 +490,12 @@ def main():
 
     else:
         write_to_prefs_log(preferences, args.session_context)
+
+    # utcnow, not now: the stamp is compared against transcript timestamps,
+    # which are UTC. Labelling local time with a Z puts the stamp hours into the
+    # future here, and `unverified()` then reports every fix as having landed.
+    stamp_ledger_rows(preferences, args.cwd or args.project_cwd,
+                      datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%SZ"))
 
     print("\nDone.")
 

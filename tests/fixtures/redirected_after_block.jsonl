@@ -1,0 +1,6 @@
+{"type":"permission-mode","permissionMode":"default"}
+{"type":"assistant","timestamp":"2026-08-01T10:00:00.000Z","uuid":"a1","message":{"content":[{"type":"tool_use","id":"t1","name":"Read","input":{"file_path":"/x/.env"}}]}}
+{"type":"user","timestamp":"2026-08-01T10:00:01.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":"The user doesn't want to proceed with this tool use"}]}}
+{"type":"user","timestamp":"2026-08-01T10:00:02.000Z","message":{"content":"Use cat instead please"}}
+{"type":"assistant","timestamp":"2026-08-01T10:00:03.000Z","uuid":"a2","message":{"content":[{"type":"tool_use","id":"t2","name":"Bash","input":{"command":"cat /x/.env"}}]}}
+{"type":"user","timestamp":"2026-08-01T10:00:04.000Z","message":{"content":[{"type":"tool_result","tool_use_id":"t2","is_error":false,"content":"SECRET=1"}]}}

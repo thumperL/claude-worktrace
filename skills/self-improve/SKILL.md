@@ -43,6 +43,43 @@ A "steer" is ANY input where the user shapes HOW you work. The bar is intentiona
 
 Key insight: if the user is telling you HOW to do something (not just WHAT), that's a steer.
 
+A steer count of 3 is a **within-session** trigger, and on its own it misses the
+commonest case: a preference you state once per session, every session. Five mild
+steers across five sessions never reaches three in any one of them.
+
+### Trigger 1b: Something recurred across sessions
+
+The ledger accrues across sessions, so the pattern that never trips the count is
+visible there. Ask it:
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/friction.py" top --cwd "$(pwd)" \
+    --kind correction --kind circumvention --text
+```
+
+Rows appear only after **two distinct sessions**, so anything listed has already
+happened more than once, with the calls attached. Two kinds arrive here:
+
+| Kind | Means |
+| --- | --- |
+| `correction` | a call was stopped, and something else happened instead |
+| `circumvention` | a call was stopped, and the same target was reached anyway |
+
+`circumvention` is the sharper one and reads differently in a report. It is not
+"you corrected me"; it is "I was blocked and went around it". Say that plainly,
+quote both calls, and do not soften it.
+
+**Before proposing anything, check what already failed:**
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/friction.py" verify --cwd "$(pwd)" --text
+```
+
+A preference saved weeks ago whose rows keep arriving did not work. That is more
+useful than a new suggestion, and re-proposing the same wording is the wrong
+response: either the wording was too vague to act on, or the preference is not
+one Claude can follow. Say which you think it is.
+
 ### Trigger 2: Periodic context checkpoints (~25%, ~50%, ~75%)
 
 At each checkpoint, capture any learnings accumulated since the last checkpoint. This is routine periodic logging — NOT a signal that context is running out. After capturing, **resume the current task immediately without comment**. Do not suggest compacting, ending the session, or starting fresh.
@@ -79,6 +116,19 @@ On [2]: discard and continue
 On [3]: accept user input, then persist
 
 After the user responds, **immediately resume the current task**.
+
+**Optional — ledger check at the same checkpoint.** Only when
+`learning_loop_mode: checkpoint` is set in `.claude/claude-worktrace.local.md`
+(it is unset by default, so this is normally a no-op): also run the cheap
+recurrence check and, if something has now come up in a second session, mention
+it in one line alongside the patterns above.
+
+```bash
+python3 "${CLAUDE_PLUGIN_ROOT}/scripts/friction.py" check --cwd "$(pwd)"
+```
+
+It prints nothing unless something recurred in a second session, so silence is
+the normal outcome and needs no comment.
 
 **All other triggers** (steer count ≥ 3, explicit request) use the full interactive flow below, which can write directly to CLAUDE.md on confirmation.
 
@@ -143,8 +193,27 @@ Write preferences using the bundled script:
 
 ```bash
 python "${CLAUDE_PLUGIN_ROOT}/scripts/write_preferences.py" \
-  --preferences '[{"category": "...", "preference": "...", "context": "...", "evidence": "..."}]' \
-  --target global
+  --preferences '[{"category": "...", "preference": "...", "context": "...", "evidence": "...", "rows": ["circ-1a2b3c4d5e"]}]' \
+  --target global --cwd "$(pwd)"
+```
+
+**Pass `rows` whenever the preference came from ledger rows.** It stamps them as
+applied, which is the only reason `verify` can tell later whether the preference
+changed anything. A preference saved without it is unfalsifiable, and
+unfalsifiable preferences are what fill a `CLAUDE.md` with decoration.
+
+If the user declines a row, record that too, so the next session does not raise
+it again:
+
+```bash
+python3 -c "
+import sys; sys.path.insert(0, '${CLAUDE_PLUGIN_ROOT}/scripts')
+from lib import ledger as L
+from datetime import datetime
+p = L.ledger_path('$(pwd)'); led = L.Ledger.load(p)
+led.decline('<row-id>', '<their reason, in their words>',
+            datetime.now().strftime('%Y-%m-%dT%H:%M:%SZ'))
+led.save(p)"
 ```
 
 The script handles:

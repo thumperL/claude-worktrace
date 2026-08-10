@@ -10,6 +10,33 @@ Auto-captures your Claude Code sessions — what you did, what decisions you mad
 
 **How it works:** You work normally. On compaction/clear/exit, a hook reads the transcript, Sonnet analyzes it in one API call, and writes both a worklog entry and any detected preferences. Everything syncs to `~/Documents/AI/` via iCloud and into Claude's native memory so it's active next session.
 
+## Preferences that get checked
+
+Most tools that learn your preferences never find out whether any of them worked. Saved preferences pile up in `CLAUDE.md` and nothing distinguishes the ones that changed Claude's behaviour from the ones that are decoration.
+
+This one keeps the evidence. Every session end folds its transcript into a per-project ledger under `~/.claude/friction-ledger/`, and a saved preference is stamped with the date it was saved. If the behaviour it was meant to stop keeps showing up afterwards, you get told:
+
+```
+"Prefer subagents for research" — saved 2026-07-18.
+3 occurrences since. The preference is not landing.
+```
+
+Two properties make that work. Evidence comes from the JSONL transcripts on disk rather than from Claude's recollection of the conversation, so it can span sessions and cite the actual calls. And nothing is proposed until it has recurred in **two separate sessions** — one confused afternoon is not a pattern. A fresh install therefore has nothing to say for a week or two, then compounds.
+
+**Your worklog sees what you didn't narrate.** A command that failed four times before it worked never shows up in a session summary, because nobody types out their own retries. The tool calls are read separately and handed to the summariser, so "burned 40 calls recovering from a stale build command" can make the entry.
+
+**Circumvention detection.** When a command is blocked, Claude sometimes reaches the same thing another way: `Read(.env)` refused, then `cat .env`. That is caught deterministically, with both calls attached, and surfaces as behaviour to correct rather than as a permission to widen. `scripts/lib/safety.py` decides whether the second route reached something the first was being kept away from.
+
+Nothing is written to `CLAUDE.md` without showing you the exact diff, per item. See [docs/specs/2026-08-09-learning-loop-design.md](docs/specs/2026-08-09-learning-loop-design.md).
+
+**Trigger modes** — set `learning_loop_mode` in `.claude/claude-worktrace.local.md` (project) or `~/.claude/claude-worktrace.local.md` (global):
+
+| Mode | Behaviour |
+| --- | --- |
+| `on-demand` | Default. Nothing fires; installing changes no behaviour |
+| `suggest` | Folds each session into the ledger, and nudges only when something recurs in a second session |
+| `checkpoint` | Also checks at the self-improve context checkpoints |
+
 ## Install
 
 ```bash
@@ -84,13 +111,26 @@ claude-worktrace/
 │   └── scripts/
 │       ├── pre_compact_hook.py
 │       ├── pre_clear_hook.sh
+│       ├── ledger_hook.py
 │       └── session_end_wrapper.sh
 ├── scripts/
+│   ├── lib/
+│   │   ├── transcript.py
+│   │   ├── settings.py
+│   │   ├── safety.py
+│   │   ├── ledger.py
+│   │   └── detectors.py
+│   ├── friction.py
 │   ├── write_worklog.py
 │   ├── write_preferences.py
 │   ├── analyze_worklog.py
 │   └── migrate-from-skills.py
-└── tests/test_python39_compat.py
+└── tests/
+    ├── test_python39_compat.py
+    ├── test_transcript_parser.py
+    ├── test_safety.py
+    ├── test_ledger.py
+    └── test_ledger_hook.py
 ```
 
 ## Storage
