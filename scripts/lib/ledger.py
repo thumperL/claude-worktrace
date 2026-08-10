@@ -45,7 +45,6 @@ MIN_SESSIONS = 2
 KIND_FAILED_RETRY = "failed_retry"
 KIND_REDISCOVERY = "rediscovery"
 KIND_CORRECTION = "correction"
-KIND_PROMPT = "prompt"
 KIND_CIRCUMVENTION = "circumvention"
 
 # Ordered by how far the evidence behind the kind can be trusted. The skill
@@ -55,7 +54,6 @@ KIND_CONFIDENCE = {
     KIND_REDISCOVERY: "certain",
     KIND_CIRCUMVENTION: "certain",
     KIND_CORRECTION: "certain",
-    KIND_PROMPT: "inferred",
 }
 
 MAX_EVIDENCE = 3
@@ -69,7 +67,15 @@ _INSTANT_FORMATS = (
 
 
 def _instant(value):
-    """ISO-8601 UTC to a comparable datetime, tolerant of missing sub-seconds."""
+    """ISO-8601 UTC to a comparable datetime, tolerant of missing sub-seconds.
+
+    Deliberately NOT transcript.parse_timestamp, which looks like a duplicate of
+    this and is not. That one preserves the zone, so it returns an aware
+    datetime for `...Z` and a naive one for a stamp without a zone, and
+    comparing the two raises TypeError. This function is only ever used to order
+    occurrences against each other, so it drops the zone and always returns
+    naive UTC, which cannot raise whatever mixture the transcripts hold.
+    """
     if not value:
         return None
     text = str(value).strip()
@@ -463,7 +469,14 @@ def _quarantine(path, reason):
 
 
 def ledger_path(cwd, base=None):
-    """One ledger per project: the fix destination differs by scope."""
+    """One ledger per project: the fix destination differs by scope.
+
+    The encoding matches transcript.encode_project_dir by coincidence rather
+    than by contract. That one has to track however Claude Code names its own
+    project directories; this one names a directory we own. Sharing a helper
+    would tie our filenames to someone else's format decision, so the two stay
+    separate on purpose.
+    """
     base = base or os.path.join(os.path.expanduser("~"), ".claude", "friction-ledger")
     encoded = str(cwd or "").rstrip("/").replace("/", "-") or "unknown"
     return os.path.join(base, "%s.json" % encoded)
